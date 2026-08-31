@@ -1,0 +1,9 @@
+<Solution>
+  <Configurations>
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Project Path="Ostriv Trainer.vcxproj" Id="edeb523d-c5b6-4b4b-a513-e935fa82288b">
+    <Build Solution="*|x86" Project="false" />
+  </Project>
+</Solution>

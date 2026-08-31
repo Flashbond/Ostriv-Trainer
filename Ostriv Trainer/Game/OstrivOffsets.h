@@ -1,0 +1,194 @@
+#pragma once
+
+#include <cstdint>
+
+namespace Ostriv
+{
+    // ============================================================
+    // Process
+    // ============================================================
+
+    constexpr wchar_t PROCESS_NAME[] = L"ostriv.exe";
+
+    // ============================================================
+    // Money
+    // ============================================================
+
+    // 48 8B 05 xx xx xx xx  ->  mov rax, [rip+disp]   (state pointer load)
+    // F2 0F 10 80 F0 9C 13 00 -> movsd xmm0, [rax+0x139CF0]  (money field access, used as an anchor)
+    constexpr char MONEY_STATE_POINTER_SIGNATURE[] =
+        "48 8B 05 ?? ?? ?? ?? F2 0F 10 80 F0 9C 13 00";
+
+    constexpr int MONEY_STATE_POINTER_DISPLACEMENT_OFFSET = 3;
+    constexpr int MONEY_STATE_POINTER_INSTRUCTION_LENGTH = 7;
+
+    constexpr uintptr_t MONEY_OFFSET = 0x139CF0;
+
+    // ============================================================
+    // Building Manager
+    // ============================================================
+
+    constexpr uintptr_t BUILDING_MANAGER_OFFSET = 0x6ABDF8;
+
+    constexpr uintptr_t BUILDING_MANAGER_COUNT_OFFSET = 0x00;
+    constexpr uintptr_t BUILDING_MANAGER_ARRAY_OFFSET = 0x08;
+
+
+    // ============================================================
+    // Building Object
+    // ============================================================
+    
+    constexpr uintptr_t INVENTORY_TYPE_OFFSET = 0x1A8;
+
+    constexpr uintptr_t BUILDING_ACTIVE_STATUS_OFFSET = 0x1B0;
+
+    constexpr uintptr_t BUILDING_DEMOLISHING_STATUS_OFFSET = 0x298;
+
+    // Child -> owning RowHouse container. The parent's own position and
+
+    constexpr uintptr_t BUILDING_PARENT_OFFSET_APARTMENT = 0x7D8;
+    constexpr uintptr_t BUILDING_PARENT_OFFSET_SHOP = 0x828;
+
+    // Apartment / Village house / Fenceless village house -> the resident
+    // family object. May be null if no family has moved in yet.
+    constexpr uintptr_t BUILDING_FAMILY_POINTER_OFFSET = 0x7C8;
+
+    // Family object -> household savings.
+    constexpr uintptr_t FAMILY_MONEY_OFFSET = 0x128;
+
+    constexpr uintptr_t BUILDING_ID_PTR_OFFSET = 0x18;
+    constexpr uintptr_t BUILDING_ID_OFFSET = 0x00;
+    constexpr uintptr_t BUILDING_ID_LENGTH_OFFSET = 0x20;
+
+    constexpr uintptr_t BUILDING_POSITION_X_OFFSET = 0x108;
+    constexpr uintptr_t BUILDING_POSITION_Y_OFFSET = 0x110;
+
+    // ============================================================
+    // Building Filters
+    // ============================================================
+
+    constexpr uint32_t TARGET_INVENTORY_TYPE = 64;
+
+    // The RowHouse container's own INVENTORY_TYPE_OFFSET value — confirmed
+    // by measurement. It does not report TARGET_INVENTORY_TYPE like a
+    // normal production building; this is its own accepted type.
+    constexpr uint32_t ROWHOUSE_INVENTORY_TYPE = 0x00;
+
+    constexpr uint32_t ACTIVE_BUILDING_VALUE = 1;
+
+
+    // ============================================================
+    // Building Dictionary Table
+    // ============================================================
+
+    constexpr size_t BUILDING_ENTRY_SIZE = 0xA8;
+
+    constexpr uintptr_t BUILDING_NAME_PTR_OFFSET = 0x10;
+    constexpr uintptr_t BUILDING_NAME_LENGTH_OFFSET = 0x18;
+
+
+    // ============================================================
+    // Building Table Signature
+    // ============================================================
+
+    constexpr char BUILDING_TABLE_SIGNATURE[] =
+        "48 89 35 ?? ?? ?? ?? 33 DB 8B 05 ?? ?? ?? ??";
+
+    constexpr size_t BUILDING_TABLE_DISPLACEMENT_OFFSET = 3;
+    constexpr size_t BUILDING_TABLE_INSTRUCTION_LENGTH = 7;
+
+    constexpr size_t BUILDING_COUNT_RELATIVE_OFFSET = 9;
+    constexpr size_t BUILDING_COUNT_DISPLACEMENT_OFFSET = 2;
+    constexpr size_t BUILDING_COUNT_INSTRUCTION_LENGTH = 6;
+
+    // ============================================================
+    // Resource Table
+    // ============================================================
+
+    constexpr uintptr_t RESOURCE_TABLE_OFFSET = 0x6AE850;
+
+    constexpr size_t RESOURCE_ENTRY_SIZE = 0x10;
+
+    constexpr uintptr_t RESOURCE_NAME_PTR_OFFSET = 0x00;
+    constexpr uintptr_t RESOURCE_NAME_LENGTH_OFFSET = 0x08;
+
+
+    // ============================================================
+    // Inventory
+    // ============================================================
+
+    constexpr uintptr_t INVENTORY_COUNT_OFFSET = 0x198;
+    constexpr uintptr_t INVENTORY_ARRAY_OFFSET = 0x1A0;
+    constexpr uintptr_t INVENTORY_ID_OFFSET = 0xF28;
+
+    constexpr int MAX_INVENTORY_ENTRIES = 256;
+
+    constexpr uintptr_t INVENTORY_RESOURCE_ID_OFFSET = 0x00;
+    constexpr uintptr_t INVENTORY_AMOUNT_OFFSET = 0x04;
+    constexpr uintptr_t INVENTORY_AWAITING_OFFSET = 0x09;
+    constexpr uintptr_t INVENTORY_RESERVED_OFFSET = 0x10;
+
+    constexpr size_t INVENTORY_ENTRY_SIZE = 0x14;
+
+    // The entry array ends exactly where the building's persistent unique
+    // id begins (INVENTORY_ID_OFFSET / INVENTORY_ENTRY_SIZE divides evenly
+    // — the two regions abut with no gap). This is the real physical
+    // capacity, not just how many entries happen to be populated (count)
+    // — used as the safe upper bound when scanning for every instance of
+    // a resource, since batch production can split it across entries
+    // beyond the reported count.
+    constexpr size_t INVENTORY_MAX_SCAN_INDEX = INVENTORY_ID_OFFSET / INVENTORY_ENTRY_SIZE;
+
+
+    // ============================================================
+    // Camera and Hook Constants
+    // ============================================================
+
+    constexpr uintptr_t CAMERA_UPDATE_RVA = 0x2C6952;
+
+    constexpr SIZE_T CAMERA_HOOK_SIZE = 9;
+
+    const BYTE CAMERA_ORIGINAL_BYTES[CAMERA_HOOK_SIZE] = { 0xF3, 0x41, 0x0F, 0x11, 0x87, 0x78, 0xB6, 0x11, 0x00 };
+
+    // ============================================================
+    // Camera Object (r15) Offsets
+    // ============================================================
+
+    constexpr uintptr_t CAMERA_TARGET_X_OFFSET = 0x11B66C;
+    constexpr uintptr_t CAMERA_TARGET_Z_OFFSET = 0x11B674;
+    constexpr uintptr_t CAMERA_CURRENT_X_OFFSET = 0x11B678;
+    constexpr uintptr_t CAMERA_CURRENT_Z_OFFSET = 0x11B680;
+
+    // ============================================================
+    // Camera Shared (Code Cave Data) Offsets
+    // ============================================================
+
+    constexpr uintptr_t CAVE_DATA_FLAG_OFFSET = 0x00;
+    constexpr uintptr_t CAVE_DATA_X_OFFSET = 0x04;
+    constexpr uintptr_t CAVE_DATA_Z_OFFSET = 0x08;
+
+    // ============================================================
+    // Selection Hook
+    // ============================================================
+
+    constexpr uintptr_t SELECTION_HOOK_RVA = 0x219680;
+
+    constexpr size_t SELECTION_HOOK_SIZE = 5;
+
+    constexpr uint8_t SELECTION_HOOK_ORIGINAL_BYTES[] =
+    {0x4C, 0x89, 0x44, 0x24,0x18};
+
+
+    // ============================================================
+    // Memory Safety Limits
+    // ============================================================
+
+    constexpr uintptr_t MIN_VALID_POINTER = 0x10000000000ULL;
+    constexpr uintptr_t MAX_VALID_POINTER = 0x7FFFFFFFFFFFULL;
+
+    constexpr int MAX_BUILDING_ARRAY_COUNT = 500000;
+    constexpr int MAX_BUILDING_TABLE_COUNT = 100000;
+
+    constexpr size_t MAX_STRING_LENGTH = 64;
+    constexpr size_t MAX_BUILDING_ID_LENGTH = 1024;
+}

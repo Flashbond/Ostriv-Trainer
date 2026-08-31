@@ -1,0 +1,71 @@
+# ============================================================
+# Build output
+# ============================================================
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+Win32/
+*.exe
+*.dll
+*.pdb
+*.ilk
+*.exp
+*.lib
+*.obj
+*.iobj
+*.ipdb
+
+# ============================================================
+# Visual Studio
+# ============================================================
+.vs/
+*.user
+*.suo
+*.sdf
+*.opensdf
+*.VC.db
+*.VC.VC.opendb
+*.aps
+*.opendb
+ipch/
+*.tlog
+*.log
+*.idb
+*.pgc
+*.pgd
+*.rsp
+*.sbr
+*.tlh
+*.tli
+BuildLog.htm
+*.vspscc
+*.vssscc
+.builds
+*.pidb
+*.svclog
+*.scc
+
+# ============================================================
+# NuGet (nlohmann/json is restored here — no need to commit it,
+# NuGet Package Restore fetches it automatically on build)
+# ============================================================
+packages/
+*.nupkg
+*.nuget.props
+*.nuget.targets
+
+# ============================================================
+# Trainer runtime data — user-specific, should never be committed
+# ============================================================
+ostriv_trainer.json
+
+# ============================================================
+# Misc
+# ============================================================
+*.tmp
+*.bak
+Thumbs.db
+desktop.ini
