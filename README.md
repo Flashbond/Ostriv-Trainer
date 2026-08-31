@@ -1,8 +1,8 @@
 # Ostriv Trainer
 
-A memory-editing trainer for [Ostriv](https://ostriv.fun/), the city-building simulation game. It gives you a live, always-up-to-date view of every relevant building in your city, lets you rename buildings, teleport the camera to them, add or remove resources, and lock resource or money amounts so they stay fixed while the trainer is running.
+A memory-editing trainer for Ostriv, the city-building simulation game. It gives you a live, always-up-to-date view of every relevant building in your city, lets you rename buildings, teleport the camera to them, add or remove resources, and lock resource or money amounts so they stay fixed while the trainer is running.
 
-> **⚠️ Compatibility:** this release targets **Ostriv Alpha 5, Patch 9, Build 60 (`0.5.9.60`)**. Future releases of the trainer will follow the **same version numbering as the game itself** — download the trainer release that matches your installed game version. Using a trainer build against a different game version may not work correctly, since it relies on the game's internal memory layout.
+> **Compatibility:** this release targets **Ostriv Alpha 5, Patch 9, Build 60 (`0.5.9.60`)**. Future releases of the trainer will follow the **same version numbering as the game itself** — download the trainer release that matches your installed game version. Using a trainer build against a different game version may not work correctly, since it relies on the game's internal memory layout.
 
 ## Features
 
