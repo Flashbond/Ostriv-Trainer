@@ -68,4 +68,14 @@ private:
     int m_count;
 
     std::vector<Resource> m_resources;
+
+    // Compacts the array by shifting every entry after `index` down by one
+    // slot and decrementing count — matching the game's own removal
+    // algorithm exactly (confirmed via decompilation of the function that
+    // runs when a resource is depleted in-game). Leaving a gap in the
+    // middle of [0, count) instead of compacting causes any real entries
+    // further along to fall outside the range the game itself scans for
+    // display — they'd still physically exist but silently vanish from
+    // the game's own UI.
+    bool RemoveEntryAt(int index);
 };

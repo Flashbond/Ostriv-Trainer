@@ -106,10 +106,10 @@ void InterfaceManager::ApplyResourceLocks()
 
 void InterfaceManager::ApplyMoneyLock()
 {
-    if (!m_moneyController || !m_jsonManager.GetMoneyLocked())
+    if (!m_moneyController || !m_moneyLocked)
         return;
 
-    m_moneyController->SetMoney(m_jsonManager.GetMoneyLockAmount());
+    m_moneyController->SetMoney(m_moneyLockAmount);
 }
 
 bool InterfaceManager::ApplyAmountToBuilding(Building& building, int32_t resourceId, float amount) const
@@ -557,7 +557,6 @@ bool InterfaceManager::InitializeJson()
 
     m_showOnlyOwnedTypes = m_jsonManager.GetShowOnlyOwnedTypes();
     UI::SetOwnedOnlyChecked(m_showOnlyOwnedTypes);
-    UI::SetMoneyLockChecked(m_jsonManager.GetMoneyLocked());
 
     m_jsonInitialized = true;
     return true;
@@ -689,8 +688,10 @@ bool InterfaceManager::SetMoney(const std::wstring& text, bool locked)
 
     double value = wcstod(text.c_str(), nullptr);
 
-    m_jsonManager.SetMoneyLock(locked, value);
-    m_jsonManager.Save();
+    // Session-only, intentionally never touches JSON — see the member
+    // declaration in the header for why.
+    m_moneyLocked = locked;
+    m_moneyLockAmount = value;
 
     if (!m_moneyController->SetMoney(value))
         return false;
@@ -701,11 +702,11 @@ bool InterfaceManager::SetMoney(const std::wstring& text, bool locked)
 
 bool InterfaceManager::ClearMoneyLock()
 {
-    if (!m_jsonManager.GetMoneyLocked())
+    if (!m_moneyLocked)
         return false;
 
-    m_jsonManager.SetMoneyLock(false, m_jsonManager.GetMoneyLockAmount());
-    return m_jsonManager.Save();
+    m_moneyLocked = false;
+    return true;
 }
 
 const std::vector<std::pair<int32_t, std::wstring>>& InterfaceManager::GetKnownResources() const

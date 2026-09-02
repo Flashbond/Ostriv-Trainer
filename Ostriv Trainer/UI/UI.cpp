@@ -11,6 +11,9 @@
 #include <cstdio>
 #include <unordered_map>
 #include <unordered_set>
+#include <cmath>
+#include <cstdlib>
+#include <cwchar>
 
 #include <Uxtheme.h>
 #pragma comment(lib, "uxtheme.lib")
@@ -216,6 +219,139 @@ namespace UI
 
             return true;
         }
+
+        LRESULT CALLBACK NumericEditSubclassProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam,
+            UINT_PTR subclassId, DWORD_PTR)
+        {
+            switch (msg)
+            {
+            case WM_CHAR:
+            {
+                wchar_t ch = static_cast<wchar_t>(wParam);
+
+                if (ch < 0x20)
+                {
+                    // Control character (Backspace, etc.) — let the default
+                    // edit control handling perform the deletion itself, then
+                    // immediately restore "0.00" if that just emptied the box.
+                    LRESULT result = DefSubclassProc(hwnd, msg, wParam, lParam);
+
+                    wchar_t buffer[64] = {};
+                    GetWindowTextW(hwnd, buffer, 63);
+                    if (buffer[0] == L'\0')
+                    {
+                        SetWindowTextW(hwnd, L"0.00");
+                        SendMessageW(hwnd, EM_SETSEL, 0, -1); // select-all, so the next keystroke overwrites it
+                    }
+
+                    return result;
+                }
+
+                bool isDigit = (ch >= L'0' && ch <= L'9');
+                bool isDot = (ch == L'.');
+
+                if (!isDigit && !isDot)
+                    return 0; // reject anything else outright — letters, '-', spaces, symbols
+
+                if (isDot)
+                {
+                    wchar_t buffer[64] = {};
+                    GetWindowTextW(hwnd, buffer, 63);
+                    if (wcschr(buffer, L'.') != nullptr)
+                        return 0; // already has a decimal point — reject a second one
+                }
+
+                break; // valid digit/first dot — let the default edit control processing insert it
+            }
+
+            case WM_KEYDOWN:
+            {
+                // The Delete key does NOT generate WM_CHAR — it has to be
+                // caught separately to cover "select all, press Delete"
+                // clearing the box the same way Backspace does above.
+                if (wParam == VK_DELETE)
+                {
+                    LRESULT result = DefSubclassProc(hwnd, msg, wParam, lParam);
+
+                    wchar_t buffer[64] = {};
+                    GetWindowTextW(hwnd, buffer, 63);
+                    if (buffer[0] == L'\0')
+                    {
+                        SetWindowTextW(hwnd, L"0.00");
+                        SendMessageW(hwnd, EM_SETSEL, 0, -1);
+                    }
+
+                    return result;
+                }
+                break;
+            }
+
+            case WM_PASTE:
+            {
+                if (!OpenClipboard(hwnd))
+                    return 0;
+
+                HANDLE data = GetClipboardData(CF_UNICODETEXT);
+                bool valid = data != nullptr;
+
+                if (valid)
+                {
+                    wchar_t* text = static_cast<wchar_t*>(GlobalLock(data));
+                    valid = (text != nullptr) && (*text != L'\0');
+
+                    if (valid)
+                    {
+                        bool seenDot = false;
+                        for (const wchar_t* p = text; *p; ++p)
+                        {
+                            if (*p == L'.')
+                            {
+                                if (seenDot) { valid = false; break; }
+                                seenDot = true;
+                            }
+                            else if (*p < L'0' || *p > L'9')
+                            {
+                                valid = false;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (text)
+                        GlobalUnlock(data);
+                }
+
+                CloseClipboard();
+
+                if (!valid)
+                    return 0;
+
+                break;
+            }
+
+            case WM_KILLFOCUS:
+            {
+                wchar_t buffer[64] = {};
+                GetWindowTextW(hwnd, buffer, 63);
+
+                double value = wcstod(buffer, nullptr);
+                if (!std::isfinite(value) || value < 0.0)
+                    value = 0.0;
+
+                wchar_t formatted[64];
+                swprintf_s(formatted, L"%.2f", value);
+                SetWindowTextW(hwnd, formatted);
+
+                break;
+            }
+
+            case WM_NCDESTROY:
+                RemoveWindowSubclass(hwnd, NumericEditSubclassProc, subclassId);
+                break;
+            }
+
+            return DefSubclassProc(hwnd, msg, wParam, lParam);
+        }
     }
 
     void CreateControls(HWND parent, HINSTANCE instance)
@@ -235,13 +371,14 @@ namespace UI
         g_moneyLabel = CreateWindowW(L"STATIC", L"Money: ", WS_CHILD | WS_VISIBLE,
             0, 0, 10, 10, parent, nullptr, instance, nullptr);
 
-        g_newMoneyEdit = CreateWindowW(L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
+        g_newMoneyEdit = CreateWindowW(L"EDIT", L"0.00", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
             0, 0, 10, 10, parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_NEW_MONEY_EDIT)), instance, nullptr);
+        SetWindowSubclass(g_newMoneyEdit, NumericEditSubclassProc, 3, 0);
 
         g_setMoneyButton = CreateWindowW(L"BUTTON", L"Set Money", WS_CHILD | WS_VISIBLE,
             0, 0, 10, 10, parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_SET_MONEY_BUTTON)), instance, nullptr);
 
-        g_moneyLockCheckbox = CreateWindowW(L"BUTTON", L"Lock Money", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
+        g_moneyLockCheckbox = CreateWindowW(L"BUTTON", L"Lock (Click Set Money)", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
             0, 0, 10, 10, parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_MONEY_LOCK_CHECKBOX)), instance, nullptr);
 
         // --- Left column: all buildings ---
@@ -280,8 +417,9 @@ namespace UI
         g_selectedAmountEdit = CreateWindowW(L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
             0, 0, 10, 10, parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_SELECTED_AMOUNT_EDIT)), instance, nullptr);
 
-        g_selectedSetAmountButton = CreateWindowW(L"BUTTON", L"Set Amount", WS_CHILD | WS_VISIBLE,
-            0, 0, 10, 10, parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_SELECTED_SET_AMOUNT_BUTTON)), instance, nullptr);
+        g_selectedAmountEdit = CreateWindowW(L"EDIT", L"0.00", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
+            0, 0, 10, 10, parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_SELECTED_AMOUNT_EDIT)), instance, nullptr);
+        SetWindowSubclass(g_selectedAmountEdit, NumericEditSubclassProc, 1, 0);
 
         g_selectedAddButton = CreateWindowW(L"BUTTON", L"Add Resource", WS_CHILD | WS_VISIBLE,
             0, 0, 10, 10, parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_SELECTED_ADD_BUTTON)), instance, nullptr);
@@ -301,8 +439,9 @@ namespace UI
 
         g_currentInventoryList = CreateInventoryListView(parent, IDC_CURRENT_INVENTORY_LIST, instance);
 
-        g_currentAmountEdit = CreateWindowW(L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
+        g_currentAmountEdit = CreateWindowW(L"EDIT", L"0.00", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
             0, 0, 10, 10, parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_CURRENT_AMOUNT_EDIT)), instance, nullptr);
+        SetWindowSubclass(g_currentAmountEdit, NumericEditSubclassProc, 2, 0);
 
         g_currentSetAmountButton = CreateWindowW(L"BUTTON", L"Set Amount", WS_CHILD | WS_VISIBLE,
             0, 0, 10, 10, parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_CURRENT_SET_AMOUNT_BUTTON)), instance, nullptr);
@@ -349,9 +488,9 @@ namespace UI
         int y = margin;
         int currentX = leftX;
 
-        const int statusWidth = 155;
-        const int connectBtnWidth = 81;
-        const int alwaysOnTopWidth = 120;
+        const int statusWidth = 285;
+        const int connectBtnWidth = 85;
+        const int alwaysOnTopWidth = 110;
 
         MoveWindow(g_status, currentX, y + 2, statusWidth, editHeight, TRUE);
         currentX += statusWidth + rowGap;
@@ -362,8 +501,8 @@ namespace UI
         currentX = rightX;
         const int moneyLabelWidth = 130;
         const int newMoneyEditWidth = 90;
-        const int setMoneyBtnWidth = 93;
-        const int moneyLockWidth = 100;
+        const int setMoneyBtnWidth = 90;
+        const int moneyLockWidth = 160;
 
         MoveWindow(g_moneyLabel, currentX, y + 2, moneyLabelWidth, editHeight, TRUE);
         currentX += moneyLabelWidth + rowGap;
@@ -411,11 +550,11 @@ namespace UI
         y += selectedInventoryHeight + rowGap;
 
         const int amountEditWidth = 70;
-        const int setAmountBtnWidth = 84;
-        const int centerBtnWidth = 105;
+        const int setAmountBtnWidth = 86;
+        const int centerBtnWidth = 108;
 
-        const int addBtnWidth = 95;
-        const int removeBtnWidth = addBtnWidth + 13;
+        const int addBtnWidth = 98;
+        const int removeBtnWidth = addBtnWidth + 16;
 
         rowGap = 4;
 
@@ -680,7 +819,7 @@ namespace UI
         EnableWindow(g_selectedSetAmountButton, enabled);
         EnableWindow(g_selectedRemoveButton, enabled);
         if (!enabled)
-            SetWindowTextW(g_selectedAmountEdit, L"");
+            SetWindowTextW(g_selectedAmountEdit, L"0.00");
     }
 
     void PopulateSelectedInventory(const std::vector<ResourceListItem>& resources,
@@ -731,7 +870,7 @@ namespace UI
         EnableWindow(g_currentSetAmountButton, enabled);
         EnableWindow(g_currentRemoveButton, enabled);
         if (!enabled)
-            SetWindowTextW(g_currentAmountEdit, L"");
+            SetWindowTextW(g_currentAmountEdit, L"0.00");
     }
 
     void PopulateCurrentInventory(const std::vector<ResourceListItem>& resources,
@@ -861,6 +1000,7 @@ namespace UI
 
         return false;
     }
+
     namespace
     {
         struct AddResourceDialogState
@@ -994,8 +1134,9 @@ namespace UI
 
         CreateWindowW(L"STATIC", L"Amount:", WS_CHILD | WS_VISIBLE, 15, 55, 80, 20, dlg, nullptr, nullptr, nullptr);
 
-        state.amountEdit = CreateWindowW(L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
+        state.amountEdit = CreateWindowW(L"EDIT", L"0.00", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
             100, 53, 190, 22, dlg, nullptr, nullptr, nullptr);
+        SetWindowSubclass(state.amountEdit, NumericEditSubclassProc, 4, 0);
 
         CreateWindowW(L"BUTTON", L"Add", WS_CHILD | WS_VISIBLE, 100, 100, 90, 28, dlg, reinterpret_cast<HMENU>(static_cast<INT_PTR>(1)), nullptr, nullptr);
         CreateWindowW(L"BUTTON", L"Cancel", WS_CHILD | WS_VISIBLE, 200, 100, 90, 28, dlg, reinterpret_cast<HMENU>(static_cast<INT_PTR>(2)), nullptr, nullptr);
@@ -1035,7 +1176,7 @@ namespace UI
     void ResetOnDisconnect()
     {
         SetMoneyDisplay(L"");
-        SetNewMoneyEditText(L"");
+        SetNewMoneyEditText(L"0.00");
         SetMoneyLockChecked(false);
         SetMoneyControlsEnabled(false);
 

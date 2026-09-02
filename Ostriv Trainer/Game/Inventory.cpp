@@ -1,7 +1,10 @@
 #include "Inventory.h"
+
 #include "../Core/RemoteMemory.h"
 #include "OstrivOffsets.h"
 #include "ResourceManager.h"
+
+#include <vector>
 #include <algorithm>
 #include <cmath>
 #include <map>
@@ -45,26 +48,15 @@ const Resource* Inventory::FindResource(int32_t resourceId) const {
 }
 
 bool Inventory::SetAmount(int32_t resourceId, float desiredAmount) {
-    if (!IsValid() || !std::isfinite(desiredAmount)) return false;
+    if (m_buildingAddress == 0 || m_arrayAddress == 0) return false;
+    if (!std::isfinite(desiredAmount)) return false;
     if (desiredAmount < 0.0f) desiredAmount = 0.0f;
 
-    Resource* resource = FindResource(resourceId);
-    if (!resource) return false;
-
-    int sourceIndex = resource->GetSourceIndex();
-    if (sourceIndex < 0 || sourceIndex >= m_count) return false;
-
-    uintptr_t entryAddress = m_arrayAddress + (static_cast<uintptr_t>(sourceIndex) * Ostriv::INVENTORY_ENTRY_SIZE);
-    float oldAmount = 0.0f;
-
-    if (!m_memory.Read(entryAddress + Ostriv::INVENTORY_AMOUNT_OFFSET, oldAmount)) return false;
-
-    float remaining = desiredAmount - oldAmount;
-    if (remaining < 0.0f) remaining = 0.0f;
+    struct EntryRef { int index; float amount; };
+    std::vector<EntryRef> entries;
+    float total = 0.0f;
 
     for (int i = 0; i < static_cast<int>(Ostriv::INVENTORY_MAX_SCAN_INDEX); ++i) {
-        if (i == sourceIndex) continue;
-
         int32_t currentResourceId = -1;
         float currentAmount = 0.0f;
         uint8_t awaiting = 0;
@@ -73,23 +65,73 @@ bool Inventory::SetAmount(int32_t resourceId, float desiredAmount) {
         if (!IsValidEntry(currentResourceId, currentAmount, awaiting)) continue;
         if (currentResourceId != resourceId) continue;
 
-        float newAmount = 0.0f;
-        if (remaining > 0.0f) {
-            float consumed = (std::min)(currentAmount, remaining);
-            newAmount = currentAmount - consumed;
-            remaining -= consumed;
-        }
-        else {
-            newAmount = currentAmount;
-        }
-
-        uintptr_t currentEntryAddr = m_arrayAddress + (static_cast<uintptr_t>(i) * Ostriv::INVENTORY_ENTRY_SIZE) + Ostriv::INVENTORY_AMOUNT_OFFSET;
-        if (!m_memory.Write(currentEntryAddr, newAmount)) return false;
+        entries.push_back({ i, currentAmount });
+        total += currentAmount;
     }
 
-    if (!m_memory.Write(entryAddress + Ostriv::INVENTORY_AMOUNT_OFFSET, desiredAmount)) return false;
+    if (entries.empty())
+        return false;
 
-    resource->SetAmount(desiredAmount);
+    if (desiredAmount >= total)
+    {
+        // Growing (or matching) the total: pile the entire increase onto
+        // the first entry — no removal involved, packing is unaffected.
+        float delta = desiredAmount - total;
+        uintptr_t entryAddress = m_arrayAddress + (static_cast<uintptr_t>(entries.front().index) * Ostriv::INVENTORY_ENTRY_SIZE);
+        float newAmount = entries.front().amount + delta;
+
+        if (!m_memory.Write(entryAddress + Ostriv::INVENTORY_AMOUNT_OFFSET, newAmount))
+            return false;
+    }
+    else
+    {
+        constexpr float kZeroEpsilon = 0.0005f;
+        float toRemove = total - desiredAmount;
+
+        // Process from the HIGHEST index down to the lowest: removing an
+        // entry shifts every later index down by one, which would
+        // invalidate the remaining (lower) indices already queued here if
+        // we went the other way. Highest-first means every removal only
+        // ever affects indices we've already handled.
+        for (auto it = entries.rbegin(); it != entries.rend(); ++it)
+        {
+            if (toRemove <= 0.0f)
+                break;
+
+            float consumed = (std::min)(it->amount, toRemove);
+            float newAmount = it->amount - consumed;
+            toRemove -= consumed;
+
+            if (newAmount <= kZeroEpsilon)
+            {
+                if (it->index < m_count)
+                {
+                    if (!RemoveEntryAt(it->index))
+                        return false;
+                }
+                else
+                {
+                    // Outside the currently-packed region — leftover from
+                    // before this fix existed in an older save. Compaction
+                    // doesn't apply out here; just clear it in place.
+                    uintptr_t entryAddress = m_arrayAddress + (static_cast<uintptr_t>(it->index) * Ostriv::INVENTORY_ENTRY_SIZE);
+                    if (!m_memory.WriteBytes(entryAddress, Ostriv::INVENTORY_EMPTY_ENTRY_PATTERN, sizeof(Ostriv::INVENTORY_EMPTY_ENTRY_PATTERN)))
+                        return false;
+                }
+            }
+            else
+            {
+                uintptr_t entryAddress = m_arrayAddress + (static_cast<uintptr_t>(it->index) * Ostriv::INVENTORY_ENTRY_SIZE);
+                if (!m_memory.Write(entryAddress + Ostriv::INVENTORY_AMOUNT_OFFSET, newAmount))
+                    return false;
+            }
+        }
+    }
+
+    Resource* resource = FindResource(resourceId);
+    if (resource)
+        resource->SetAmount(desiredAmount);
+
     return true;
 }
 
@@ -192,19 +234,43 @@ bool Inventory::AddResource(int32_t resourceId, float amount) {
 
     if (arrayAddress == 0)
     {
-        // The building's own inventory was empty (+0x198 == 0) the last
-        // time it was refreshed, so RefreshInventory()/Update() never
-        // bothered resolving the array pointer — read it directly here
-        // instead of requiring a non-empty inventory first.
         if (!m_memory.Read(m_buildingAddress + Ostriv::INVENTORY_ARRAY_OFFSET, arrayAddress) || arrayAddress == 0)
             return false;
+
+        m_arrayAddress = arrayAddress; // keep the member in sync, SetAmount() below relies on it
     }
+
+    // If this resource type already exists anywhere in the inventory
+    // (even split across multiple batch entries), this isn't a new type —
+    // grow its existing total via SetAmount() instead of creating a
+    // redundant entry and incorrectly incrementing the +0x198 type count.
+    float existingTotal = 0.0f;
+    bool alreadyPresent = false;
+
+    for (int i = 0; i < static_cast<int>(Ostriv::INVENTORY_MAX_SCAN_INDEX); ++i)
+    {
+        uintptr_t entryAddress = arrayAddress + (static_cast<uintptr_t>(i) * Ostriv::INVENTORY_ENTRY_SIZE);
+
+        int32_t currentId = 0;
+        float currentAmount = 0.0f;
+        uint8_t awaiting = 0;
+
+        if (!m_memory.Read(entryAddress + Ostriv::INVENTORY_RESOURCE_ID_OFFSET, currentId)) continue;
+        if (currentId != resourceId) continue;
+
+        if (!m_memory.Read(entryAddress + Ostriv::INVENTORY_AMOUNT_OFFSET, currentAmount)) continue;
+        if (!m_memory.Read(entryAddress + Ostriv::INVENTORY_AWAITING_OFFSET, awaiting)) continue;
+        if (awaiting != 0) continue;
+
+        alreadyPresent = true;
+        existingTotal += currentAmount;
+    }
+
+    if (alreadyPresent)
+        return SetAmount(resourceId, existingTotal + amount);
 
     // Genuinely search for the first empty slot across the array's real
     // physical capacity — never just "the slot right after count".
-    // ClearResource() can leave a hole anywhere in that range, and reusing
-    // it (instead of always growing past the end) is what keeps this from
-    // ever bloating the inventory.
     for (int i = 0; i < static_cast<int>(Ostriv::INVENTORY_MAX_SCAN_INDEX); ++i)
     {
         uintptr_t entryAddress = arrayAddress + (static_cast<uintptr_t>(i) * Ostriv::INVENTORY_ENTRY_SIZE);
@@ -219,19 +285,13 @@ bool Inventory::AddResource(int32_t resourceId, float amount) {
         if (!m_memory.Read(entryAddress + Ostriv::INVENTORY_STATUS_BLOCK_OFFSET, statusBlock)) continue;
         if (!m_memory.Read(entryAddress + Ostriv::INVENTORY_RESERVED_OFFSET, outgoingFlag)) continue;
 
-        // The whole 4-byte status block must be zero — not just the
-        // single awaiting-flag byte inside it — otherwise this slot may
-        // be silently reserved for an incoming delivery even though it
-        // "looks" empty at a glance.
         if (existingId != 0 || existingAmount != 0.0f || statusBlock != 0 || outgoingFlag != 0)
             continue; // not empty — keep looking
 
         if (!m_memory.Write(entryAddress + Ostriv::INVENTORY_RESOURCE_ID_OFFSET, resourceId)) return false;
         if (!m_memory.Write(entryAddress + Ostriv::INVENTORY_AMOUNT_OFFSET, amount)) return false;
 
-        // Unlike removal, the game does NOT pick up a new entry on its
-        // own — confirmed by testing. We always have to bump the count
-        // ourselves.
+        // This genuinely IS a brand-new type — +0x198 goes up by exactly one.
         int32_t newCount = m_count + 1;
         m_memory.Write(m_buildingAddress + Ostriv::INVENTORY_COUNT_OFFSET, newCount);
 
@@ -241,35 +301,69 @@ bool Inventory::AddResource(int32_t resourceId, float amount) {
     return false; // no empty slot found anywhere in the array
 }
 
+bool Inventory::RemoveEntryAt(int index)
+{
+    if (index < 0 || index >= m_count) return false;
+
+    for (int i = index; i < m_count - 1; ++i)
+    {
+        uintptr_t dst = m_arrayAddress + (static_cast<uintptr_t>(i) * Ostriv::INVENTORY_ENTRY_SIZE);
+        uintptr_t src = m_arrayAddress + (static_cast<uintptr_t>(i + 1) * Ostriv::INVENTORY_ENTRY_SIZE);
+
+        uint64_t chunk1 = 0, chunk2 = 0;
+        uint32_t chunk3 = 0;
+
+        if (!m_memory.Read(src, chunk1)) return false;
+        if (!m_memory.Read(src + 8, chunk2)) return false;
+        if (!m_memory.Read(src + 16, chunk3)) return false;
+
+        if (!m_memory.Write(dst, chunk1)) return false;
+        if (!m_memory.Write(dst + 8, chunk2)) return false;
+        if (!m_memory.Write(dst + 16, chunk3)) return false;
+    }
+
+    // The now-vacated last slot goes back to the shared empty template.
+    uintptr_t lastAddress = m_arrayAddress + (static_cast<uintptr_t>(m_count - 1) * Ostriv::INVENTORY_ENTRY_SIZE);
+    if (!m_memory.WriteBytes(lastAddress, Ostriv::INVENTORY_EMPTY_ENTRY_PATTERN, sizeof(Ostriv::INVENTORY_EMPTY_ENTRY_PATTERN)))
+        return false;
+
+    --m_count;
+    return m_memory.Write(m_buildingAddress + Ostriv::INVENTORY_COUNT_OFFSET, m_count);
+}
+
 bool Inventory::ClearResource(int32_t resourceId) {
     if (m_buildingAddress == 0 || m_arrayAddress == 0 || m_count <= 0) return false;
 
-    int clearedCount = 0;
+    bool removedAny = false;
 
-    for (int i = 0; i < static_cast<int>(Ostriv::INVENTORY_MAX_SCAN_INDEX); ++i) {
-        uintptr_t entryAddress = m_arrayAddress + (static_cast<uintptr_t>(i) * Ostriv::INVENTORY_ENTRY_SIZE);
+    // Repeatedly find-and-compact-remove the first matching entry within
+    // the packed [0, count) range. Re-scanning from the top after each
+    // removal avoids having to track how earlier removals shifted later
+    // indices — simple and correct, at the cost of an extra pass or two.
+    bool foundOne = true;
+    while (foundOne)
+    {
+        foundOne = false;
 
-        int32_t currentId = 0;
-        if (!m_memory.Read(entryAddress + Ostriv::INVENTORY_RESOURCE_ID_OFFSET, currentId))
-            continue;
+        for (int i = 0; i < m_count; ++i)
+        {
+            uintptr_t entryAddress = m_arrayAddress + (static_cast<uintptr_t>(i) * Ostriv::INVENTORY_ENTRY_SIZE);
 
-        if (currentId != resourceId)
-            continue;
+            int32_t currentId = 0;
+            if (!m_memory.Read(entryAddress + Ostriv::INVENTORY_RESOURCE_ID_OFFSET, currentId))
+                continue;
 
-        if (m_memory.WriteBytes(entryAddress, Ostriv::INVENTORY_EMPTY_ENTRY_PATTERN, sizeof(Ostriv::INVENTORY_EMPTY_ENTRY_PATTERN)))
-            ++clearedCount;
+            if (currentId != resourceId)
+                continue;
+
+            if (!RemoveEntryAt(i))
+                return removedAny;
+
+            removedAny = true;
+            foundOne = true;
+            break; // restart — count and every index after i just shifted
+        }
     }
 
-    if (clearedCount == 0)
-        return false;
-
-    // Unlike additions, the game does NOT update INVENTORY_COUNT_OFFSET on
-    // its own when entries are cleared out from under it — we always have
-    // to do it ourselves.
-    int32_t newCount = m_count - clearedCount;
-    if (newCount < 0) newCount = 0;
-
-    m_memory.Write(m_buildingAddress + Ostriv::INVENTORY_COUNT_OFFSET, newCount);
-
-    return true;
+    return removedAny;
 }

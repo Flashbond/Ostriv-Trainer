@@ -47,7 +47,10 @@ bool Building::ResolveIdentity(uintptr_t address)
     if (!ReadInventoryType())
         return false;
 
-    if (m_type != Ostriv::TARGET_INVENTORY_TYPE && m_type != Ostriv::ROWHOUSE_INVENTORY_TYPE)
+    // ">=" against the floor, not "==" — see the constant's comment in
+    // OstrivOffsets.h for why an exact match silently breaks on any
+    // building whose inventory has grown past its starting capacity.
+    if (m_type < Ostriv::TARGET_INVENTORY_TYPE && m_type != Ostriv::ROWHOUSE_INVENTORY_TYPE)
         return false;
 
     if (!ReadBuildingId())

@@ -76,7 +76,16 @@ namespace
 
         if (!g_buildingManager->ResolveBuildingTable())
         {
-            UI::SetStatus(L"Attached, but could not resolve the building table.");
+            // The process handle and a few backend objects are already
+            // live at this point — rather than leaving the Connect button
+            // clickable (inviting a retry on top of that half-built
+            // state), force the button into "Disconnect" so clicking it
+            // is the only path forward. Disconnect() itself tears
+            // everything down cleanly, null-object guards make it safe to
+            // call even though g_interfaceManager was never created.
+            g_connected = true;
+            UI::SetConnectButtonState(true);
+            UI::SetStatus(L"Attached, but could not resolve building table.");
             return false;
         }
 

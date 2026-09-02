@@ -54,8 +54,6 @@ bool JsonManager::Load()
     m_lockedRecords.clear();
     m_showOnlyOwnedTypes = true;
     m_alwaysOnTop = false;
-    m_moneyLocked = false;
-    m_moneyLockAmount = 0.0;
 
     if (!Exists())
         return true;
@@ -79,15 +77,6 @@ bool JsonManager::Load()
 
         if (settings.contains("alwaysOnTop") && settings["alwaysOnTop"].is_boolean())
             m_alwaysOnTop = settings["alwaysOnTop"].get<bool>();
-    }
-
-    if (root.contains("moneyLock") && root["moneyLock"].is_object())
-    {
-        const auto& moneyLock = root["moneyLock"];
-        if (moneyLock.contains("locked") && moneyLock["locked"].is_boolean())
-            m_moneyLocked = moneyLock["locked"].get<bool>();
-        if (moneyLock.contains("amount") && moneyLock["amount"].is_number())
-            m_moneyLockAmount = moneyLock["amount"].get<double>();
     }
 
     if (!root.contains("buildings") || !root["buildings"].is_array())
@@ -160,10 +149,6 @@ bool JsonManager::Save() const
     root["settings"] = json::object();
     root["settings"]["showOnlyOwnedTypes"] = m_showOnlyOwnedTypes;
     root["settings"]["alwaysOnTop"] = m_alwaysOnTop;
-
-    root["moneyLock"] = json::object();
-    root["moneyLock"]["locked"] = m_moneyLocked;
-    root["moneyLock"]["amount"] = m_moneyLockAmount;
 
     root["buildings"] = json::array();
 
@@ -322,14 +307,6 @@ void JsonManager::SetAlwaysOnTop(bool value) { m_alwaysOnTop = value; }
 
 bool JsonManager::GetShowOnlyOwnedTypes() const { return m_showOnlyOwnedTypes; }
 void JsonManager::SetShowOnlyOwnedTypes(bool value) { m_showOnlyOwnedTypes = value; }
-
-bool JsonManager::GetMoneyLocked() const { return m_moneyLocked; }
-double JsonManager::GetMoneyLockAmount() const { return m_moneyLockAmount; }
-void JsonManager::SetMoneyLock(bool locked, double amount)
-{
-    m_moneyLocked = locked;
-    m_moneyLockAmount = amount;
-}
 
 std::wstring JsonManager::GetFilePath() const
 {

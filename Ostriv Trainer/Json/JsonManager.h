@@ -38,10 +38,6 @@ public:
     bool GetShowOnlyOwnedTypes() const;
     void SetShowOnlyOwnedTypes(bool value);
 
-    bool GetMoneyLocked() const;
-    double GetMoneyLockAmount() const;
-    void SetMoneyLock(bool locked, double amount);
-
     bool Exists() const;
 
     // O(1) — backed by an index rebuilt only on Load()/AddBuilding(), never
@@ -83,7 +79,4 @@ private:
 
     bool m_alwaysOnTop = false;
     bool m_loaded = false;
-
-    bool m_moneyLocked = false;
-    double m_moneyLockAmount = 0.0;
 };

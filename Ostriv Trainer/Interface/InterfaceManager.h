@@ -120,6 +120,9 @@ private:
     bool m_jsonInitialized;
     bool m_showOnlyOwnedTypes;
 
+    bool m_moneyLocked = false;
+    double m_moneyLockAmount = 0.0;
+
     std::wstring m_currentTypeFilter;
 
     uintptr_t m_selectedBuildingAddress;

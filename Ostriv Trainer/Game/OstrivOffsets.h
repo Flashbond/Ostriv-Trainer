@@ -79,7 +79,16 @@ namespace Ostriv
     // ============================================================
     // Building Filters
     // ============================================================
-
+    // NOT a fixed "building type" marker, despite the name and despite it
+    // reliably reading exactly 64 in every building we tested for a long
+    // time — it's actually the inventory's own CAPACITY, which starts at
+    // 64 and grows in the same +64-per-step pattern we found for the
+    // building dictionary table. A building that has accumulated more
+    // than 64 distinct resource types over a long save (confirmed: a
+    // ~100-year farm grew to 0x80/128) silently reads a LARGER value here
+    // — an exact-equality check would then incorrectly treat it as
+    // irrelevant and drop it from the list. Use ">=" against this floor,
+    // never "==".
     constexpr uint32_t TARGET_INVENTORY_TYPE = 64;
 
     // The RowHouse container's own INVENTORY_TYPE_OFFSET value — confirmed
