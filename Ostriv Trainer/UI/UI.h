@@ -19,6 +19,7 @@ namespace UI
     {
         IDC_STATUS_LABEL = 100,
         IDC_CONNECT_BUTTON,
+        IDC_ALWAYS_ON_TOP_CHECKBOX,
 
         IDC_MONEY_LOCK_CHECKBOX,
         IDC_NEW_MONEY_EDIT,
@@ -48,7 +49,7 @@ namespace UI
         IDC_CURRENT_REMOVE_BUTTON,
         IDC_CURRENT_SET_BUTTON // "Center Building"
     };
-
+    
     enum class InventoryPanel { Selected, Current };
 
     void CreateControls(HWND parent, HINSTANCE instance);
@@ -64,13 +65,21 @@ namespace UI
     void SetMoneyLockChecked(bool checked);
     bool GetMoneyLockChecked();
 
+    void SetAlwaysOnTopChecked(bool checked);
+    bool GetAlwaysOnTopChecked();
+    void SetConnectButtonState(bool connected);
+
     void PopulateTypeFilter(const std::vector<std::wstring>& types);
     std::wstring GetSelectedTypeFilter(); // "" means "no filter" / "(All types)"
 
     void SetTypeFilterToAll();
 
+    void ClearTypeFilter();
+    void SetTypeFilterEnabled(bool enabled);
+
     void SetOwnedOnlyChecked(bool checked);
     bool GetOwnedOnlyChecked();
+    void SetOwnedOnlyEnabled(bool enabled);
 
     void PopulateBuildingList(const std::vector<BuildingListItem>& buildings);
     uintptr_t GetSelectedBuildingAddress();
@@ -81,6 +90,7 @@ namespace UI
 
     // Enables/disables BOTH "Set Amount" and "Center Building" for this panel.
     void SetSelectedCenterEnabled(bool enabled);
+    void SetSelectedAmountControlsEnabled(bool enabled);
     void PopulateSelectedInventory(const std::vector<ResourceListItem>& resources, const std::unordered_set<int32_t>& lockedResourceIds);
     bool GetSelectedInventoryRow(int32_t& resourceId, std::wstring& amountEditText, bool& checked);
 
@@ -90,6 +100,7 @@ namespace UI
     void SetCurrentNameEnabled(bool enabled);
 
     void SetCurrentCenterEnabled(bool enabled);
+    void SetCurrentAmountControlsEnabled(bool enabled);
     void PopulateCurrentInventory(const std::vector<ResourceListItem>& resources, const std::unordered_set<int32_t>& lockedResourceIds);
     bool GetCurrentInventoryRow(int32_t& resourceId, std::wstring& amountEditText, bool& checked);
 
@@ -98,6 +109,8 @@ namespace UI
     // checkbox (never for PopulateSelectedInventory/PopulateCurrentInventory's
     // own programmatic updates) — outPanel/outResourceId identify the row.
     bool HandleInventoryCheckboxNotification(LPARAM notifyLParam, InventoryPanel& outPanel, int32_t& outResourceId);
+
+    void ResetOnDisconnect();
 
     // Opens a small popup with a resource dropdown + amount box. Blocks the
     // calling thread until the user presses Add or Cancel (other windows'

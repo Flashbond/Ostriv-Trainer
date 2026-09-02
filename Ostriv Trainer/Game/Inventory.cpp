@@ -167,9 +167,18 @@ bool Inventory::ReadEntry(int index, int32_t& resourceId, float& amount, uint8_t
 }
 
 bool Inventory::IsValidEntry(int32_t resourceId, float amount, uint8_t awaiting) const {
-    if (resourceId < 0 || !std::isfinite(amount) || amount <= 0.0f) return false;
+    // resourceId == 0 is the game's own "None" placeholder entry — not a
+    // real material, never show it. resourceId < 0 or >= the known table
+    // size (Ostriv::RESOURCE_TABLE_COUNT) means we caught this entry mid
+    // in-flight write (the game hasn't finished populating it yet) — the
+    // bytes we're reading as an id/amount pair aren't meaningful data,
+    // just whatever happened to be there at that instant.
+    if (resourceId <= 0 || resourceId >= static_cast<int32_t>(Ostriv::RESOURCE_TABLE_COUNT))
+        return false;
 
-    // awaiting == 0 → teslim edilmiş/kalıcı kayıt. != 0 → henüz bekleyen (transit) kayıt, sayma.
+    if (!std::isfinite(amount) || amount <= 0.0f) return false;
+
+    // awaiting == 0 → delivered/permanent record. != 0 → still in transit, don't count.
     if (awaiting != 0) return false;
 
     return true;
@@ -202,15 +211,19 @@ bool Inventory::AddResource(int32_t resourceId, float amount) {
 
         int32_t existingId = 0;
         float existingAmount = 0.0f;
-        uint8_t incomingFlag = 0;
+        int32_t statusBlock = 0;
         uint8_t outgoingFlag = 0;
 
         if (!m_memory.Read(entryAddress + Ostriv::INVENTORY_RESOURCE_ID_OFFSET, existingId)) continue;
         if (!m_memory.Read(entryAddress + Ostriv::INVENTORY_AMOUNT_OFFSET, existingAmount)) continue;
-        if (!m_memory.Read(entryAddress + Ostriv::INVENTORY_AWAITING_OFFSET, incomingFlag)) continue;
+        if (!m_memory.Read(entryAddress + Ostriv::INVENTORY_STATUS_BLOCK_OFFSET, statusBlock)) continue;
         if (!m_memory.Read(entryAddress + Ostriv::INVENTORY_RESERVED_OFFSET, outgoingFlag)) continue;
 
-        if (existingId != 0 || existingAmount != 0.0f || incomingFlag != 0 || outgoingFlag != 0)
+        // The whole 4-byte status block must be zero — not just the
+        // single awaiting-flag byte inside it — otherwise this slot may
+        // be silently reserved for an incoming delivery even though it
+        // "looks" empty at a glance.
+        if (existingId != 0 || existingAmount != 0.0f || statusBlock != 0 || outgoingFlag != 0)
             continue; // not empty — keep looking
 
         if (!m_memory.Write(entryAddress + Ostriv::INVENTORY_RESOURCE_ID_OFFSET, resourceId)) return false;
@@ -243,15 +256,7 @@ bool Inventory::ClearResource(int32_t resourceId) {
         if (currentId != resourceId)
             continue;
 
-        static constexpr uint8_t emptyPattern[Ostriv::INVENTORY_ENTRY_SIZE] = {
-            0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x80, 0xBF,
-            0x00, 0x00, 0x00, 0x00
-        };
-
-        if (m_memory.WriteBytes(entryAddress, emptyPattern, sizeof(emptyPattern)))
+        if (m_memory.WriteBytes(entryAddress, Ostriv::INVENTORY_EMPTY_ENTRY_PATTERN, sizeof(Ostriv::INVENTORY_EMPTY_ENTRY_PATTERN)))
             ++clearedCount;
     }
 

@@ -8,13 +8,6 @@
 #include <numeric>
 #include <unordered_set>
 
-namespace
-{
-    constexpr int kMissingTickThreshold = 3;
-    constexpr int kNewBuildingConfirmTicks = 3;
-    constexpr int kActiveConfirmTicks = 3;
-}
-
 BuildingManager::BuildingManager(RemoteMemory& memory, ResourceManager& resourceManager, uintptr_t moduleBase)
     : m_memory(memory),
     m_resourceManager(resourceManager),
@@ -22,7 +15,9 @@ BuildingManager::BuildingManager(RemoteMemory& memory, ResourceManager& resource
     m_buildingTable(0),
     m_buildingCount(0),
     m_ready(false),
-    m_hasCompletedFirstSync(false)
+    m_phase(1),
+    m_countSamples{ -1, -1, -1 },
+    m_tableSamples{ 0, 0, 0 }
 {
 }
 
@@ -32,21 +27,21 @@ bool BuildingManager::ResolveBuildingTable()
     m_buildingCount = 0;
     m_ready = false;
 
-    uintptr_t managerAddress = m_moduleBase + Ostriv::BUILDING_MANAGER_OFFSET;
+    uintptr_t managerAddress = m_moduleBase + Ostriv::INGAME_BUILDINGS_TABLE_OFFSET;
 
     uintptr_t tableAddress = 0;
     int32_t count = 0;
 
-    if (!m_memory.Read(managerAddress + Ostriv::BUILDING_MANAGER_ARRAY_OFFSET, tableAddress))
+    if (!m_memory.Read(managerAddress + Ostriv::INGAME_BUILDINGS_TABLE_ARRAY_OFFSET, tableAddress))
         return false;
 
-    if (!m_memory.Read(managerAddress + Ostriv::BUILDING_MANAGER_COUNT_OFFSET, count))
+    if (!m_memory.Read(managerAddress + Ostriv::INGAME_BUILDINGS_TABLE_COUNT_OFFSET, count))
         return false;
 
     if (!tableAddress)
         return false;
 
-    if (count <= 0 || count > Ostriv::MAX_BUILDING_ARRAY_COUNT)
+    if (count <= 0 || count > Ostriv::INGAME_BUILDINGS_TABLE_MAX_COUNT)
         return false;
 
     m_buildingTable = tableAddress;
@@ -86,16 +81,69 @@ Building* BuildingManager::GetBuildingByUniqueId(const std::wstring& uniqueId)
 size_t BuildingManager::GetBuildingCount() const { return m_buildings.size(); }
 bool BuildingManager::IsReady() const { return m_ready; }
 
-BuildingManager::SyncResult BuildingManager::RunSlowSync()
+BuildingManager::SyncResult BuildingManager::Tick()
 {
     SyncResult result;
 
-    if (!ResolveBuildingTable())
+    if (m_phase >= 1 && m_phase <= 3)
+    {
+        if (!ResolveBuildingTable())
+        {
+            m_phase = 1;
+            return result; // ok stays false — caller reports "lost connection"
+        }
+
+        int idx = m_phase - 1;
+        m_countSamples[idx] = m_buildingCount;
+        m_tableSamples[idx] = m_buildingTable;
+
+        result.ok = true;
+        ++m_phase;
         return result;
+    }
+
+    if (m_phase == 4)
+    {
+        result.ok = true;
+
+        int32_t agreedCount = -1;
+        uintptr_t agreedTable = 0;
+
+        for (int i = 0; i < 3 && agreedCount < 0; ++i)
+        {
+            int matches = 0;
+            for (int j = 0; j < 3; ++j)
+                if (m_countSamples[j] == m_countSamples[i])
+                    ++matches;
+
+            if (matches >= 2)
+            {
+                agreedCount = m_countSamples[i];
+                agreedTable = m_tableSamples[i];
+            }
+        }
+
+        if (agreedCount >= 0)
+        {
+            m_buildingTable = agreedTable;
+            m_buildingCount = agreedCount;
+            result = RunFullScan();
+            result.scanned = true;
+        }
+
+        m_phase = 5;
+        return result;
+    }
 
     result.ok = true;
+    m_phase = 1;
+    return result;
+}
 
-    const bool isFirstSync = !m_hasCompletedFirstSync;
+BuildingManager::SyncResult BuildingManager::RunFullScan()
+{
+    SyncResult result;
+    result.ok = true;
 
     if (!m_buildingTable || m_buildingCount <= 0)
         return result;
@@ -123,69 +171,34 @@ BuildingManager::SyncResult BuildingManager::RunSlowSync()
 
     bool anyChange = false;
 
-    for (auto& building : m_buildings)
+    for (auto it = m_buildings.begin(); it != m_buildings.end(); )
     {
-        if (!building) continue;
+        Building* building = it->get();
 
-        bool present = currentSet.count(building->GetAddress()) != 0;
-
-        if (present)
+        if (!currentSet.count(building->GetAddress()))
         {
-            building->MarkSeenThisTick();
+            bool wasShown = building->GetActiveStatus();
 
-            if (!building->IsListVisible())
-                building->MarkPresentTick();
+            if (!building->GetUniqueId().empty())
+                m_byUniqueId.erase(building->GetUniqueId());
 
-            building->RefreshStatus();
-            building->AdvanceActiveStability();
+            it = m_buildings.erase(it);
 
-            if (building->GetActiveStabilityTicks() >= kActiveConfirmTicks)
-            {
-                bool oldConfirmed = building->GetActiveStatus();
-                building->PromoteActiveStatus();
-                if (building->GetActiveStatus() != oldConfirmed && building->IsListVisible())
-                    anyChange = true;
-            }
+            if (wasShown)
+                anyChange = true;
 
-            if (building->IsDemolishing())
-                building->MarkMissingThisTick();
-        }
-        else
-        {
-            building->MarkMissingThisTick();
+            continue;
         }
 
-        if (!building->IsListVisible() && building->GetPresentTicks() >= kNewBuildingConfirmTicks)
-        {
-            building->MarkListVisible();
-            result.newlyVisible.push_back(building.get());
+        bool oldActive = building->GetActiveStatus();
+        building->RefreshStatus();
+        bool newActive = building->GetActiveStatus();
+
+        if (oldActive != newActive)
             anyChange = true;
-        }
+
+        ++it;
     }
-
-    m_buildings.erase(
-        std::remove_if(
-            m_buildings.begin(),
-            m_buildings.end(),
-            [&anyChange, this](const std::unique_ptr<Building>& building)
-            {
-                if (!building) return true;
-
-                bool shouldRemove = building->GetMissingTicks() >= kMissingTickThreshold;
-                if (shouldRemove)
-                {
-                    if (building->IsListVisible())
-                        anyChange = true;
-
-                    const std::wstring& uid = building->GetUniqueId();
-                    if (!uid.empty())
-                        m_byUniqueId.erase(uid);
-                }
-
-                return shouldRemove;
-            }),
-        m_buildings.end()
-    );
 
     std::unordered_set<uintptr_t> trackedAddresses;
     trackedAddresses.reserve(m_buildings.size());
@@ -200,29 +213,22 @@ BuildingManager::SyncResult BuildingManager::RunSlowSync()
         auto newBuilding = std::make_unique<Building>(m_memory, m_resourceManager);
         if (newBuilding->ResolveIdentity(address))
         {
-            newBuilding->MarkSeenThisTick();
-            newBuilding->MarkPresentTick();
             newBuilding->RefreshStatus();
-            newBuilding->AdvanceActiveStability();
-
-            if (isFirstSync)
-            {
-                newBuilding->PromoteActiveStatus();
-                newBuilding->MarkListVisible();
-                result.newlyVisible.push_back(newBuilding.get());
-                anyChange = true;
-            }
 
             if (!newBuilding->GetUniqueId().empty())
                 m_byUniqueId[newBuilding->GetUniqueId()] = newBuilding.get();
+
+            if (newBuilding->GetActiveStatus())
+            {
+                result.newlyVisible.push_back(newBuilding.get());
+                anyChange = true;
+            }
 
             m_buildings.push_back(std::move(newBuilding));
         }
 
         trackedAddresses.insert(address);
     }
-
-    m_hasCompletedFirstSync = true;
 
     result.changed = anyChange;
     return result;

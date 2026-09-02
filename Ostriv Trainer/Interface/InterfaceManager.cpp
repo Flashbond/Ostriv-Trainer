@@ -34,7 +34,6 @@ InterfaceManager::InterfaceManager(
     m_cameraController(cameraController),
     m_moneyController(moneyController),
     m_jsonInitialized(false),
-    m_typeFilterInitialized(false),
     m_showOnlyOwnedTypes(true),
     m_selectedBuildingAddress(0),
     m_currentBuildingAddress(0)
@@ -66,7 +65,7 @@ void InterfaceManager::SlowUpdate()
     if (!InitializeJson())
         return;
 
-    BuildingManager::SyncResult result = m_buildingManager.RunSlowSync();
+    BuildingManager::SyncResult result = m_buildingManager.Tick();
 
     if (!result.ok)
     {
@@ -83,11 +82,8 @@ void InterfaceManager::SlowUpdate()
         RefreshBuildingListDisplay();
     }
 
-    if (!m_typeFilterInitialized)
-    {
+    if (result.scanned)
         RefreshTypeFilterOptions();
-        m_typeFilterInitialized = true;
-    }
 }
 
 void InterfaceManager::ApplyResourceLocks()
@@ -212,7 +208,7 @@ bool InterfaceManager::SelectBuilding(uintptr_t address)
 
     m_selectedBuildingAddress = address;
     UI::ClearSelectedPendingChecks();
-
+    UI::SetSelectedAmountControlsEnabled(false);
     building->RefreshInventory();
     BuildSelectedInventory();
     UI::PopulateSelectedInventory(m_selectedInventory, GetLockedResourceIds(address));
@@ -231,7 +227,7 @@ bool InterfaceManager::SelectBuilding(uintptr_t address)
 void InterfaceManager::ClearSelection()
 {
     UI::ClearSelectedPendingChecks();
-
+    UI::SetSelectedAmountControlsEnabled(false);
     m_selectedBuildingAddress = 0;
     m_selectedInventory.clear();
 
@@ -322,7 +318,7 @@ bool InterfaceManager::SetCurrentBuilding(uintptr_t address)
     if (addressChanged)
     {
         UI::ClearCurrentPendingChecks();
-
+        UI::SetCurrentAmountControlsEnabled(false);
         BuildingListItem item;
         if (BuildBuildingItem(*building, item))
         {
@@ -342,7 +338,7 @@ bool InterfaceManager::SetCurrentBuilding(uintptr_t address)
 void InterfaceManager::ClearCurrentBuilding()
 {
     UI::ClearCurrentPendingChecks();
-
+    UI::SetCurrentAmountControlsEnabled(false);
     m_currentBuildingAddress = 0;
     m_currentInventory.clear();
 
@@ -454,7 +450,7 @@ void InterfaceManager::BuildBuildingList()
 
     for (const auto& building : buildings)
     {
-        if (!building || !building->IsListVisible() || !building->GetActiveStatus())
+        if (!building || !building->GetActiveStatus())
             continue;
 
         BuildingListItem item;
@@ -671,6 +667,15 @@ void InterfaceManager::RefreshMoneyDisplay()
     double money = 0.0;
     if (!m_moneyController->GetMoney(money))
         return;
+
+    // Only touch the control when the value actually changed — SetWindowTextW
+    // forces a repaint every time it's called, even with identical text,
+    // which is what was causing the visible flicker at 200ms intervals.
+    if (m_hasDisplayedMoney && money == m_lastDisplayedMoney)
+        return;
+
+    m_lastDisplayedMoney = money;
+    m_hasDisplayedMoney = true;
 
     wchar_t buffer[64];
     swprintf_s(buffer, L"%.2f", money);

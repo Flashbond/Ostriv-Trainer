@@ -24,18 +24,12 @@ Building::Building(RemoteMemory& memory, ResourceManager& resourceManager)
     m_kind(BuildingKind::Normal),
     m_isActive(false),
     m_isDemolishing(false),
-    m_rawActiveStatus(false),
     m_activeStatus(false),
-    m_previousRawActiveStatus(false),
-    m_activeStabilityTicks(0),
     m_hasResource(false),
     m_isResidential(false),
     m_hasFamilyMoney(false),
     m_familyMoney(0.0f),
     m_familyAddress(0),
-    m_missingTicks(0),
-    m_presentTicks(0),
-    m_listVisible(false),
     m_identityResolved(false),
     m_positionX(0.0f),
     m_positionY(0.0f),
@@ -65,9 +59,7 @@ bool Building::ResolveIdentity(uintptr_t address)
     if (!ReadBuildingName())
         return false;
 
-    // No catalog entry exists for this id — assign a proper display name
-    // manually instead of falling back to the raw id.
-    if (m_id.find(L"hata-fenceless") != std::wstring::npos)
+    if (m_id.find(L"fenceless") != std::wstring::npos)
         m_dictionaryName = L"Fenceless village house";
 
     if (m_type == Ostriv::ROWHOUSE_INVENTORY_TYPE)
@@ -142,7 +134,7 @@ bool Building::RefreshStatus()
     if (!ReadActiveAndDemolishingState(stateSource))
         return false;
 
-    m_rawActiveStatus = m_isActive && !m_isDemolishing;
+    m_activeStatus = m_isActive && !m_isDemolishing;
 
     return true;
 }
@@ -153,7 +145,7 @@ bool Building::HasPendingInventory() const
         return false;
 
     if (m_isResidential)
-        return true; // family money must be checked live, regardless of the goods inventory count
+        return true;
 
     uint8_t hasResourceValue = 0;
     if (!m_memory.Read(m_address + Ostriv::INVENTORY_COUNT_OFFSET, hasResourceValue))
@@ -190,7 +182,7 @@ bool Building::RefreshInventory()
     {
         uintptr_t familyAddress = 0;
 
-        if (m_memory.Read(m_address + Ostriv::BUILDING_FAMILY_POINTER_OFFSET, familyAddress) && familyAddress != 0)
+        if (m_memory.Read(m_address + Ostriv::INGAME_BUILDING_FAMILY_POINTER_OFFSET, familyAddress) && familyAddress != 0)
         {
             m_familyAddress = familyAddress;
 
@@ -203,7 +195,7 @@ bool Building::RefreshInventory()
         }
         else
         {
-            m_familyAddress = 0; // no family moved in yet — null-safe, nothing to read
+            m_familyAddress = 0;
         }
     }
 
@@ -225,7 +217,6 @@ bool Building::SetFamilyMoney(float amount)
 
 bool Building::IsValid() const { return m_address != 0; }
 bool Building::GetActiveStatus() const { return m_activeStatus; }
-bool Building::GetRawActiveStatus() const { return m_rawActiveStatus; }
 bool Building::IsDemolishing() const { return m_isDemolishing; }
 bool Building::HasResource() const { return m_hasResource; }
 bool Building::HasFamilyMoney() const { return m_hasFamilyMoney; }
@@ -243,43 +234,17 @@ float Building::GetPositionY() const { return m_positionY; }
 Inventory& Building::GetInventory() { return m_inventory; }
 const Inventory& Building::GetInventory() const { return m_inventory; }
 
-void Building::MarkSeenThisTick() { m_missingTicks = 0; }
-int Building::MarkMissingThisTick() { return ++m_missingTicks; }
-int Building::GetMissingTicks() const { return m_missingTicks; }
-
-int Building::MarkPresentTick() { return ++m_presentTicks; }
-int Building::GetPresentTicks() const { return m_presentTicks; }
-
-void Building::MarkListVisible() { m_listVisible = true; }
-bool Building::IsListVisible() const { return m_listVisible; }
-
-void Building::AdvanceActiveStability()
-{
-    if (m_rawActiveStatus != m_previousRawActiveStatus)
-    {
-        m_previousRawActiveStatus = m_rawActiveStatus;
-        m_activeStabilityTicks = 1;
-    }
-    else
-    {
-        ++m_activeStabilityTicks;
-    }
-}
-
-int Building::GetActiveStabilityTicks() const { return m_activeStabilityTicks; }
-void Building::PromoteActiveStatus() { m_activeStatus = m_rawActiveStatus; }
-
 Building::BuildingKind Building::ClassifyBuildingKind(const std::wstring& id)
 {
     if (id.find(L"apartment") != std::wstring::npos)
     {
-        m_parentOffset = Ostriv::BUILDING_PARENT_OFFSET_APARTMENT;
+        m_parentOffset = Ostriv::INGAME_BUILDING_PARENT_OFFSET_APARTMENT;
         return BuildingKind::Child;
     }
 
     if (id.find(L"rowhouse_shop") != std::wstring::npos)
     {
-        m_parentOffset = Ostriv::BUILDING_PARENT_OFFSET_SHOP;
+        m_parentOffset = Ostriv::INGAME_BUILDING_PARENT_OFFSET_SHOP;
         return BuildingKind::Child;
     }
 
@@ -315,8 +280,8 @@ bool Building::ReadBuildingName()
     uintptr_t nameAddress = 0;
     int32_t nameLength = 0;
 
-    if (!m_memory.Read(foundEntry + Ostriv::BUILDING_NAME_PTR_OFFSET, nameAddress) ||
-        !m_memory.Read(foundEntry + Ostriv::BUILDING_NAME_LENGTH_OFFSET, nameLength) ||
+    if (!m_memory.Read(foundEntry + Ostriv::BUILDING_DICTIONARY_NAME_PTR_OFFSET, nameAddress) ||
+        !m_memory.Read(foundEntry + Ostriv::BUILDING_DICTIONARY_NAME_LENGTH_OFFSET, nameLength) ||
         nameAddress == 0 || nameLength <= 0 || nameLength > 256)
     {
         m_dictionaryName = m_id;
@@ -334,10 +299,10 @@ bool Building::ReadBuildingId() {
     uintptr_t idAddress = 0;
     int32_t idLength = 0;
 
-    if (!m_memory.Read(m_address + Ostriv::BUILDING_ID_PTR_OFFSET, idAddress))
+    if (!m_memory.Read(m_address + Ostriv::INGAME_BUILDING_ID_PTR_OFFSET, idAddress))
         return false;
 
-    if (!m_memory.Read(m_address + Ostriv::BUILDING_ID_LENGTH_OFFSET, idLength))
+    if (!m_memory.Read(m_address + Ostriv::INGAME_BUILDING_ID_LENGTH_OFFSET, idLength))
         return false;
 
     if (idAddress == 0 || idLength <= 0 || idLength > Ostriv::MAX_BUILDING_ID_LENGTH)
@@ -387,23 +352,21 @@ bool Building::BuildDictionaryCache(RemoteMemory& memory)
     if (s_isDictionaryLoaded)
         return true;
 
-    uintptr_t match = memory.FindPattern(Ostriv::BUILDING_TABLE_SIGNATURE);
-    if (!match) return false;
-
-    uintptr_t tableAddress = memory.ResolveRipRelative(
-        match, Ostriv::BUILDING_TABLE_DISPLACEMENT_OFFSET, Ostriv::BUILDING_TABLE_INSTRUCTION_LENGTH);
-
-    uintptr_t countInstruction = match + 9;
-    uintptr_t countAddress = memory.ResolveRipRelative(
-        countInstruction, Ostriv::BUILDING_COUNT_DISPLACEMENT_OFFSET, Ostriv::BUILDING_COUNT_INSTRUCTION_LENGTH);
+    uintptr_t moduleBase = memory.GetModuleBase();
 
     uintptr_t table = 0;
     int32_t count = 0;
 
-    if (!memory.Read(tableAddress, table) || !memory.Read(countAddress, count) || !table || count <= 0)
+    if (!memory.Read(moduleBase + Ostriv::BUILDING_DICTIONARY_TABLE_POINTER_OFFSET, table))
         return false;
 
-    if (count > Ostriv::MAX_BUILDING_TABLE_COUNT)
+    if (!memory.Read(moduleBase + Ostriv::BUILDING_DICTIONARY_TABLE_COUNT_OFFSET, count))
+        return false;
+
+    if (!table || count <= 0)
+        return false;
+
+    if (count > Ostriv::BUILDING_DICTIONARY_TABLE_MAX_COUNT)
         return false;
 
     std::unordered_map<std::string, uintptr_t> tempCache;
@@ -414,10 +377,10 @@ bool Building::BuildDictionaryCache(RemoteMemory& memory)
 
     for (int32_t i = 0; i < count; ++i)
     {
-        uintptr_t entry = table + static_cast<uintptr_t>(i) * Ostriv::BUILDING_ENTRY_SIZE;
+        uintptr_t entry = table + static_cast<uintptr_t>(i) * Ostriv::BUILDING_DICTIONARY_ENTRY_SIZE;
         uintptr_t idPtr = 0;
 
-        if (!memory.Read(entry + Ostriv::BUILDING_ID_OFFSET, idPtr) || !idPtr)
+        if (!memory.Read(entry + Ostriv::BUILDING_DICTIONARY_ID_PTR_OFFSET, idPtr) || !idPtr)
             continue;
 
         char buffer[256] = { 0 };
@@ -440,8 +403,8 @@ bool Building::BuildDictionaryCache(RemoteMemory& memory)
         std::wstring displayName;
 
         bool resolved =
-            memory.Read(entry + Ostriv::BUILDING_NAME_PTR_OFFSET, nameAddress) &&
-            memory.Read(entry + Ostriv::BUILDING_NAME_LENGTH_OFFSET, nameLength) &&
+            memory.Read(entry + Ostriv::BUILDING_DICTIONARY_NAME_PTR_OFFSET, nameAddress) &&
+            memory.Read(entry + Ostriv::BUILDING_DICTIONARY_NAME_LENGTH_OFFSET, nameLength) &&
             nameAddress != 0 && nameLength > 0 && nameLength <= 256 &&
             memory.ReadUTF16String(nameAddress, displayName, nameLength);
 
@@ -477,7 +440,7 @@ void Building::ResetDictionaryCache()
 
 bool Building::ReadInventoryType()
 {
-    return m_memory.Read(m_address + Ostriv::INVENTORY_TYPE_OFFSET, m_type);
+    return m_memory.Read(m_address + Ostriv::BUILDING_INVENTORY_TYPE_OFFSET, m_type);
 }
 
 bool Building::ReadActiveAndDemolishingState(uintptr_t sourceAddress)
@@ -485,8 +448,8 @@ bool Building::ReadActiveAndDemolishingState(uintptr_t sourceAddress)
     float activeValue = 0.0f;
     uint8_t demolishingValue = 0;
 
-    if (!m_memory.Read(sourceAddress + Ostriv::BUILDING_ACTIVE_STATUS_OFFSET, activeValue)) return false;
-    if (!m_memory.Read(sourceAddress + Ostriv::BUILDING_DEMOLISHING_STATUS_OFFSET, demolishingValue)) return false;
+    if (!m_memory.Read(sourceAddress + Ostriv::INGAME_BUILDING_ACTIVE_STATUS_OFFSET, activeValue)) return false;
+    if (!m_memory.Read(sourceAddress + Ostriv::INGAME_BUILDING_DEMOLISHING_STATUS_OFFSET, demolishingValue)) return false;
 
     m_isActive = std::abs(activeValue - 1.0f) < 0.001f;
     m_isDemolishing = (demolishingValue == 1);
@@ -496,8 +459,8 @@ bool Building::ReadActiveAndDemolishingState(uintptr_t sourceAddress)
 
 bool Building::ReadPositionFrom(uintptr_t sourceAddress)
 {
-    return m_memory.Read(sourceAddress + Ostriv::BUILDING_POSITION_X_OFFSET, m_positionX) &&
-        m_memory.Read(sourceAddress + Ostriv::BUILDING_POSITION_Y_OFFSET, m_positionY);
+    return m_memory.Read(sourceAddress + Ostriv::INGAME_BUILDING_POSITION_X_OFFSET, m_positionX) &&
+        m_memory.Read(sourceAddress + Ostriv::INGAME_BUILDING_POSITION_Y_OFFSET, m_positionY);
 }
 
 bool Building::ResolveParentAddress()

@@ -46,10 +46,14 @@ JsonManager::JsonManager()
 
 bool JsonManager::Load()
 {
+    if (m_loaded)
+        return true; // already loaded this session — in-memory state (including any pre-connect toggles) is authoritative, don't re-read
+
     m_buildings.clear();
     m_index.clear();
     m_lockedRecords.clear();
     m_showOnlyOwnedTypes = true;
+    m_alwaysOnTop = false;
     m_moneyLocked = false;
     m_moneyLockAmount = 0.0;
 
@@ -72,6 +76,9 @@ bool JsonManager::Load()
         const auto& settings = root["settings"];
         if (settings.contains("showOnlyOwnedTypes") && settings["showOnlyOwnedTypes"].is_boolean())
             m_showOnlyOwnedTypes = settings["showOnlyOwnedTypes"].get<bool>();
+
+        if (settings.contains("alwaysOnTop") && settings["alwaysOnTop"].is_boolean())
+            m_alwaysOnTop = settings["alwaysOnTop"].get<bool>();
     }
 
     if (root.contains("moneyLock") && root["moneyLock"].is_object())
@@ -152,6 +159,7 @@ bool JsonManager::Save() const
 
     root["settings"] = json::object();
     root["settings"]["showOnlyOwnedTypes"] = m_showOnlyOwnedTypes;
+    root["settings"]["alwaysOnTop"] = m_alwaysOnTop;
 
     root["moneyLock"] = json::object();
     root["moneyLock"]["locked"] = m_moneyLocked;
@@ -308,6 +316,9 @@ const std::vector<std::unique_ptr<BuildingRecord>>& JsonManager::GetBuildings() 
 {
     return m_buildings;
 }
+
+bool JsonManager::GetAlwaysOnTop() const { return m_alwaysOnTop; }
+void JsonManager::SetAlwaysOnTop(bool value) { m_alwaysOnTop = value; }
 
 bool JsonManager::GetShowOnlyOwnedTypes() const { return m_showOnlyOwnedTypes; }
 void JsonManager::SetShowOnlyOwnedTypes(bool value) { m_showOnlyOwnedTypes = value; }

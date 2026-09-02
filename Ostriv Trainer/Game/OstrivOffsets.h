@@ -25,43 +25,56 @@ namespace Ostriv
     constexpr uintptr_t MONEY_OFFSET = 0x139CF0;
 
     // ============================================================
-    // Building Manager
+    // Live Building Array (INGAME_BUILDINGS_TABLE)
+    //
+    // The runtime array of every building instance that currently exists
+    // in the city. Static offset from module base — no signature needed.
+    // Both its location and its element count are read directly from
+    // memory every slow tick; nothing here is guessed.
     // ============================================================
 
-    constexpr uintptr_t BUILDING_MANAGER_OFFSET = 0x6ABDF8;
+    constexpr uintptr_t INGAME_BUILDINGS_TABLE_OFFSET = 0x6ABDF8;
 
-    constexpr uintptr_t BUILDING_MANAGER_COUNT_OFFSET = 0x00;
-    constexpr uintptr_t BUILDING_MANAGER_ARRAY_OFFSET = 0x08;
+    constexpr uintptr_t INGAME_BUILDINGS_TABLE_COUNT_OFFSET = 0x00;
+    constexpr uintptr_t INGAME_BUILDINGS_TABLE_ARRAY_OFFSET = 0x08;
 
+    // Sanity ceiling on the count read above — not a real capacity limit,
+    // just a guard against a corrupted/misread value.
+    constexpr int INGAME_BUILDINGS_TABLE_MAX_COUNT = 500000;
 
     // ============================================================
     // Building Object
+    //
+    // Fields on a single live building instance (an element of
+    // INGAME_BUILDINGS_TABLE), NOT a table of its own.
     // ============================================================
-    
-    constexpr uintptr_t INVENTORY_TYPE_OFFSET = 0x1A8;
 
-    constexpr uintptr_t BUILDING_ACTIVE_STATUS_OFFSET = 0x1B0;
+    constexpr uintptr_t BUILDING_INVENTORY_TYPE_OFFSET = 0x1A8;
 
-    constexpr uintptr_t BUILDING_DEMOLISHING_STATUS_OFFSET = 0x298;
+    constexpr uintptr_t INGAME_BUILDING_ACTIVE_STATUS_OFFSET = 0x1B0;
+
+    constexpr uintptr_t INGAME_BUILDING_DEMOLISHING_STATUS_OFFSET = 0x298;
 
     // Child -> owning RowHouse container. The parent's own position and
-
-    constexpr uintptr_t BUILDING_PARENT_OFFSET_APARTMENT = 0x7D8;
-    constexpr uintptr_t BUILDING_PARENT_OFFSET_SHOP = 0x828;
+    // active/demolishing status are authoritative for its children.
+    constexpr uintptr_t INGAME_BUILDING_PARENT_OFFSET_APARTMENT = 0x7D8;
+    constexpr uintptr_t INGAME_BUILDING_PARENT_OFFSET_SHOP = 0x828;
 
     // Apartment / Village house / Fenceless village house -> the resident
     // family object. May be null if no family has moved in yet.
-    constexpr uintptr_t BUILDING_FAMILY_POINTER_OFFSET = 0x7C8;
+    constexpr uintptr_t INGAME_BUILDING_FAMILY_POINTER_OFFSET = 0x7C8;
 
     // Family object -> household savings.
     constexpr uintptr_t FAMILY_MONEY_OFFSET = 0x128;
 
-    constexpr uintptr_t BUILDING_ID_PTR_OFFSET = 0x18;
-    constexpr uintptr_t BUILDING_ID_OFFSET = 0x00;
-    constexpr uintptr_t BUILDING_ID_LENGTH_OFFSET = 0x20;
+    // This building instance's own raw id string ("building_glassworks")
+    // — a pointer + a byte length carried on the object itself, not
+    // looked up in BUILDING_DICTIONARY_TABLE.
+    constexpr uintptr_t INGAME_BUILDING_ID_PTR_OFFSET = 0x18;
+    constexpr uintptr_t INGAME_BUILDING_ID_LENGTH_OFFSET = 0x20;
 
-    constexpr uintptr_t BUILDING_POSITION_X_OFFSET = 0x108;
-    constexpr uintptr_t BUILDING_POSITION_Y_OFFSET = 0x110;
+    constexpr uintptr_t INGAME_BUILDING_POSITION_X_OFFSET = 0x108;
+    constexpr uintptr_t INGAME_BUILDING_POSITION_Y_OFFSET = 0x110;
 
     // ============================================================
     // Building Filters
@@ -76,38 +89,52 @@ namespace Ostriv
 
     constexpr uint32_t ACTIVE_BUILDING_VALUE = 1;
 
+    // ============================================================
+    // Building Dictionary Table (BUILDING_DICTIONARY_TABLE)
+    //
+    // The game's static catalog of building TYPES (one row per type that
+    // exists in the game, whether or not the player has built one) — maps
+    // a raw id ("building_glassworks") to a display name ("Glassworks").
+    // Backed by a heap array that grows in fixed 64-row chunks and can
+    // relocate as new types are registered — but the two module-relative
+    // slots below, which hold the array's CURRENT pointer and count, are
+    // themselves static (confirmed via decompilation: FUN_14022d3b0 reads
+    // and writes them directly, no lookup of any kind). Read live every
+    // time, exactly like INGAME_BUILDINGS_TABLE — no signature scan
+    // needed, and none of the growth is our concern, only where to find
+    // the up-to-date pointer/count right now.
+    // ============================================================
+
+    constexpr uintptr_t BUILDING_DICTIONARY_TABLE_POINTER_OFFSET = 0x6A3B78;
+    constexpr uintptr_t BUILDING_DICTIONARY_TABLE_COUNT_OFFSET = 0x6A3B70;
+
+    // Sanity ceiling on the count read above — not a real capacity limit,
+    // just a guard against a corrupted/misread value.
+    constexpr int BUILDING_DICTIONARY_TABLE_MAX_COUNT = 100000;
+
+    // Per-row layout. Each row already carries its own raw id string
+    // pointer at +0x00 — there is no separate "id table" to find or trust;
+    // the dictionary is self-contained.
+    constexpr size_t BUILDING_DICTIONARY_ENTRY_SIZE = 0xA8;
+
+    constexpr uintptr_t BUILDING_DICTIONARY_ID_PTR_OFFSET = 0x00;
+    constexpr uintptr_t BUILDING_DICTIONARY_NAME_PTR_OFFSET = 0x10;
+    constexpr uintptr_t BUILDING_DICTIONARY_NAME_LENGTH_OFFSET = 0x18;
 
     // ============================================================
-    // Building Dictionary Table
-    // ============================================================
-
-    constexpr size_t BUILDING_ENTRY_SIZE = 0xA8;
-
-    constexpr uintptr_t BUILDING_NAME_PTR_OFFSET = 0x10;
-    constexpr uintptr_t BUILDING_NAME_LENGTH_OFFSET = 0x18;
-
-
-    // ============================================================
-    // Building Table Signature
-    // ============================================================
-
-    constexpr char BUILDING_TABLE_SIGNATURE[] =
-        "48 89 35 ?? ?? ?? ?? 33 DB 8B 05 ?? ?? ?? ??";
-
-    constexpr size_t BUILDING_TABLE_DISPLACEMENT_OFFSET = 3;
-    constexpr size_t BUILDING_TABLE_INSTRUCTION_LENGTH = 7;
-
-    constexpr size_t BUILDING_COUNT_RELATIVE_OFFSET = 9;
-    constexpr size_t BUILDING_COUNT_DISPLACEMENT_OFFSET = 2;
-    constexpr size_t BUILDING_COUNT_INSTRUCTION_LENGTH = 6;
-
-    // ============================================================
-    // Resource Table
-    // ============================================================
+     // Resource Table
+     // ============================================================
 
     constexpr uintptr_t RESOURCE_TABLE_OFFSET = 0x6AE850;
 
     constexpr size_t RESOURCE_ENTRY_SIZE = 0x10;
+
+    // Confirmed via decompilation, not guessed: a compiler-generated
+    // `eh_vector_destructor_iterator(&DAT_1406ae850, 0x10, 0xbc, ...)`
+    // call destructs this exact array — 0x10 matches RESOURCE_ENTRY_SIZE,
+    // and 0xBC (188) is the true element count, both baked in as
+    // compile-time constants.
+    constexpr int32_t RESOURCE_TABLE_COUNT = 0xBC;
 
     constexpr uintptr_t RESOURCE_NAME_PTR_OFFSET = 0x00;
     constexpr uintptr_t RESOURCE_NAME_LENGTH_OFFSET = 0x08;
@@ -119,16 +146,29 @@ namespace Ostriv
 
     constexpr uintptr_t INVENTORY_COUNT_OFFSET = 0x198;
     constexpr uintptr_t INVENTORY_ARRAY_OFFSET = 0x1A0;
-    constexpr uintptr_t INVENTORY_ID_OFFSET = 0xF28;
+    constexpr uintptr_t INVENTORY_ID_OFFSET = 0x508;
 
     constexpr int MAX_INVENTORY_ENTRIES = 256;
 
     constexpr uintptr_t INVENTORY_RESOURCE_ID_OFFSET = 0x00;
     constexpr uintptr_t INVENTORY_AMOUNT_OFFSET = 0x04;
+    constexpr uintptr_t INVENTORY_STATUS_BLOCK_OFFSET = 0x08;
     constexpr uintptr_t INVENTORY_AWAITING_OFFSET = 0x09;
     constexpr uintptr_t INVENTORY_RESERVED_OFFSET = 0x10;
 
     constexpr size_t INVENTORY_ENTRY_SIZE = 0x14;
+
+    // The exact byte pattern a genuinely empty entry has, confirmed by
+    // direct observation: id=0, amount=0.0f, status block=0, sentinel
+    // stays -1.0f, tail=0. Used both to recognize a free slot
+    // (AddResource) and to reset one back to this state (ClearResource).
+    constexpr uint8_t INVENTORY_EMPTY_ENTRY_PATTERN[INVENTORY_ENTRY_SIZE] = {
+        0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x80, 0xBF,
+        0x00, 0x00, 0x00, 0x00
+    };
 
     // The entry array ends exactly where the building's persistent unique
     // id begins (INVENTORY_ID_OFFSET / INVENTORY_ENTRY_SIZE divides evenly
@@ -176,7 +216,7 @@ namespace Ostriv
     constexpr size_t SELECTION_HOOK_SIZE = 5;
 
     constexpr uint8_t SELECTION_HOOK_ORIGINAL_BYTES[] =
-    {0x4C, 0x89, 0x44, 0x24,0x18};
+    { 0x4C, 0x89, 0x44, 0x24,0x18 };
 
 
     // ============================================================
@@ -185,9 +225,6 @@ namespace Ostriv
 
     constexpr uintptr_t MIN_VALID_POINTER = 0x10000000000ULL;
     constexpr uintptr_t MAX_VALID_POINTER = 0x7FFFFFFFFFFFULL;
-
-    constexpr int MAX_BUILDING_ARRAY_COUNT = 500000;
-    constexpr int MAX_BUILDING_TABLE_COUNT = 100000;
 
     constexpr size_t MAX_STRING_LENGTH = 64;
     constexpr size_t MAX_BUILDING_ID_LENGTH = 1024;

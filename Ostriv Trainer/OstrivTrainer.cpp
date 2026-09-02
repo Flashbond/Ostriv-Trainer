@@ -37,7 +37,7 @@ namespace
     constexpr UINT kFastIntervalMs = 200;
 
     constexpr UINT_PTR kSlowTimerId = 2;
-    constexpr UINT kSlowIntervalMs = 10000;
+    constexpr UINT kSlowIntervalMs = 1000; // BuildingManager::Tick() advances one phase per call; a full sync cycle takes 5 calls (5s)
 
     ProcessManager g_processManager;
     RemoteMemory g_remoteMemory;
@@ -105,6 +105,9 @@ namespace
             }
         }
 
+        UI::SetOwnedOnlyEnabled(true);
+        UI::SetTypeFilterEnabled(true);
+
         g_connected = true;
 
         std::wstring status = L"Connected: PID " + std::to_wstring(g_processManager.GetProcessId());
@@ -117,10 +120,13 @@ namespace
 
         UI::SetStatus(status);
 
-        g_interfaceManager->SlowUpdate();
+        for (int i = 0; i < 4; ++i)
+            g_interfaceManager->SlowUpdate();
 
         SetTimer(hwnd, kFastTimerId, kFastIntervalMs, nullptr);
         SetTimer(hwnd, kSlowTimerId, kSlowIntervalMs, nullptr);
+
+        UI::SetConnectButtonState(true);
 
         return true;
     }
@@ -148,6 +154,8 @@ namespace
 
         Building::ResetDictionaryCache();
 
+        UI::SetConnectButtonState(false);
+        UI::ResetOnDisconnect();
         UI::SetStatus(L"Disconnected");
     }
 
@@ -163,13 +171,59 @@ namespace
             GetClientRect(hwnd, &rect);
             UI::Layout(hwnd, rect.right - rect.left, rect.bottom - rect.top);
 
+            // Restore persisted preferences immediately, independent of
+            // whether the user has connected yet — these are local
+            // settings, not game state, so there's no reason to wait.
+            g_jsonManager.Load();
+
+            bool ownedOnly = g_jsonManager.GetShowOnlyOwnedTypes();
+            UI::SetOwnedOnlyChecked(ownedOnly);
+
+            bool alwaysOnTop = g_jsonManager.GetAlwaysOnTop();
+            UI::SetAlwaysOnTopChecked(alwaysOnTop);
+            if (alwaysOnTop)
+                SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+
+            // Both start disabled at launch — they're only meaningful once
+            // connected, even though their checked state is already
+            // restored above.
+            UI::SetOwnedOnlyEnabled(false);
+            UI::SetTypeFilterEnabled(false);
+
             UI::SetStatus(L"Not connected.");
             return 0;
         }
+        case WM_GETMINMAXINFO:
+        {
+            LPMINMAXINFO lpmmi = (LPMINMAXINFO)lParam;
 
-        case WM_SIZE:
-            UI::Layout(hwnd, LOWORD(lParam), HIWORD(lParam));
+            const int minWidth = 1030;
+            const int minHeight = 650;
+
+            lpmmi->ptMinTrackSize.x = minWidth;
+            lpmmi->ptMinTrackSize.y = minHeight;
+
             return 0;
+        }
+
+        case WM_SIZE: {
+            int width = LOWORD(lParam);
+            int height = HIWORD(lParam);
+
+            UI::Layout(hwnd, width, height);
+
+            RedrawWindow(hwnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ERASE | RDW_ALLCHILDREN | RDW_UPDATENOW);
+
+            return 0;
+        }
+
+        case WM_CTLCOLORSTATIC:
+        case WM_CTLCOLORBTN:
+        {
+            HDC hdc = reinterpret_cast<HDC>(wParam);
+            SetBkMode(hdc, TRANSPARENT);
+            return reinterpret_cast<LRESULT>(GetSysColorBrush(COLOR_WINDOW));
+        }
 
         case WM_TIMER:
             if (!g_connected || !g_interfaceManager)
@@ -185,7 +239,10 @@ namespace
         case WM_NOTIFY: {
             LPNMHDR nmhdr = reinterpret_cast<LPNMHDR>(lParam);
 
-            if (nmhdr->idFrom == UI::IDC_CURRENT_INVENTORY_LIST && nmhdr->code == NM_CUSTOMDRAW) {
+            if ((nmhdr->idFrom == UI::IDC_CURRENT_INVENTORY_LIST ||
+                nmhdr->idFrom == UI::IDC_SELECTED_INVENTORY_LIST ||
+                nmhdr->idFrom == UI::IDC_BUILDING_LIST) && nmhdr->code == NM_CUSTOMDRAW) {
+
                 LPNMLVCUSTOMDRAW lplvcd = reinterpret_cast<LPNMLVCUSTOMDRAW>(lParam);
 
                 switch (lplvcd->nmcd.dwDrawStage) {
@@ -245,6 +302,37 @@ namespace
             {
                 if (!g_connected)
                     Connect(hwnd);
+                else
+                    Disconnect(hwnd);
+                return 0;
+            }
+
+            if (id == UI::IDC_ALWAYS_ON_TOP_CHECKBOX && notification == BN_CLICKED)
+            {
+                bool onTop = UI::GetAlwaysOnTopChecked();
+                SetWindowPos(hwnd, onTop ? HWND_TOPMOST : HWND_NOTOPMOST,
+                    0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+
+                g_jsonManager.SetAlwaysOnTop(onTop);
+                g_jsonManager.Save();
+                return 0;
+            }
+
+            if (id == UI::IDC_OWNED_ONLY_CHECKBOX && notification == BN_CLICKED)
+            {
+                bool checked = UI::GetOwnedOnlyChecked();
+
+                if (g_interfaceManager)
+                {
+                    g_interfaceManager->SetShowOnlyOwnedTypes(checked); // saves + refreshes the live list itself
+                }
+                else
+                {
+                    // Not connected yet — nothing live to refresh, just persist.
+                    g_jsonManager.SetShowOnlyOwnedTypes(checked);
+                    g_jsonManager.Save();
+                }
+
                 return 0;
             }
 
@@ -256,13 +344,7 @@ namespace
                 g_interfaceManager->SetTypeFilter(UI::GetSelectedTypeFilter());
                 return 0;
             }
-
-            if (id == UI::IDC_OWNED_ONLY_CHECKBOX && notification == BN_CLICKED)
-            {
-                g_interfaceManager->SetShowOnlyOwnedTypes(UI::GetOwnedOnlyChecked());
-                return 0;
-            }
-
+         
             if (id == UI::IDC_SELECTED_SET_BUTTON && notification == BN_CLICKED)
             {
                 g_interfaceManager->CenterOnSelectedBuilding();
@@ -380,7 +462,7 @@ namespace
 
             return 0;
         }
-
+       
         case WM_DESTROY:
             Disconnect(hwnd);
             PostQuitMessage(0);
@@ -391,7 +473,7 @@ namespace
     }
 }
 
-int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int cmdShow)
+int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPWSTR lpCmdLine, _In_ int nShowCmd)
 {
     INITCOMMONCONTROLSEX icc{ sizeof(icc), ICC_LISTVIEW_CLASSES | ICC_STANDARD_CLASSES };
     InitCommonControlsEx(&icc);
@@ -416,7 +498,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, PWSTR, int cmdShow)
     if (!hwnd)
         return 0;
 
-    ShowWindow(hwnd, cmdShow);
+    ShowWindow(hwnd, nShowCmd);
     UpdateWindow(hwnd);
 
     MSG msg{};

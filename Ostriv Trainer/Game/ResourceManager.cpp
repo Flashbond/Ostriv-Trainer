@@ -8,27 +8,24 @@ namespace
 {
     bool IsPlausibleResourceName(const std::wstring& name)
     {
-        if (name.empty() || name.size() > 64)
-            return false;
-
+        // No longer restricts to a specific character set — real resource
+        // names turned out to use characters outside any reasonable
+        // whitelist, and the id-range bound already filters out garbled
+        // reads. This only catches what that bound can't: an entry whose
+        // name is blank or nothing but whitespace (which, sorted
+        // alphabetically, would otherwise land first and become the
+        // dropdown's default selection).
         for (wchar_t ch : name)
         {
-            bool ok =
-                (ch >= L'A' && ch <= L'Z') ||
-                (ch >= L'a' && ch <= L'z') ||
-                (ch >= L'0' && ch <= L'9') ||
-                ch == L' ' || ch == L'\'' || ch == L'-' || ch == L'.' ||
-                ch == L'(' || ch == L')' || ch == L',' || ch == L'/';
-
-            if (!ok)
-                return false;
+            if (ch != L' ' && ch != L'\t')
+                return true;
         }
 
-        return true;
+        return false;
     }
 }
 
-bool IsExcludedResourceName(const std::wstring& name)
+static bool IsExcludedResourceName(const std::wstring& name)
 {
     // Not real inventory materials — internal/service entries that
     // happen to pass the character filter because they're plain text.
@@ -41,7 +38,6 @@ bool IsExcludedResourceName(const std::wstring& name)
         L"Pig (boar)",
         L"Cow",
         L"Ox",
-        L"None",
         L"Sheep",
         L"Sheep (ram)",
         L"Horse",
@@ -88,7 +84,7 @@ void ResourceManager::BuildResourceCache()
 
     m_knownResources.clear();
 
-    for (int32_t id = 0; id <= 5000; ++id)
+    for (int32_t id = 1; id < Ostriv::RESOURCE_TABLE_COUNT; ++id)
     {
         std::wstring name;
         if (GetResourceName(id, name) && IsPlausibleResourceName(name) && !IsExcludedResourceName(name))

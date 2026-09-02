@@ -21,6 +21,7 @@ namespace UI
     {
         HWND g_status = nullptr;
         HWND g_connectButton = nullptr;
+        HWND g_alwaysOnTop = nullptr;
 
         HWND g_moneyLabel = nullptr;
         HWND g_moneyLockCheckbox = nullptr;
@@ -28,6 +29,7 @@ namespace UI
         HWND g_newMoneyEdit = nullptr;
         HWND g_setMoneyButton = nullptr;
 
+        HWND g_typeFilterLabel = nullptr;
         HWND g_typeFilter = nullptr;
         HWND g_ownedOnlyCheckbox = nullptr;
         HWND g_buildingList = nullptr;
@@ -40,6 +42,7 @@ namespace UI
         HWND g_selectedSetAmountButton = nullptr;
         HWND g_selectedSetButton = nullptr; // "Center Building"
 
+        HWND g_currentBuilding = nullptr;
         HWND g_currentNameEdit = nullptr;
         HWND g_currentNameButton = nullptr;
 
@@ -81,16 +84,16 @@ namespace UI
                 parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), instance, nullptr);
             
             ListView_SetExtendedListViewStyle(list,
-                LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES | LVS_EX_CHECKBOXES | LVS_EX_DOUBLEBUFFER);
+                LVS_EX_FULLROWSELECT | LVS_EX_CHECKBOXES | LVS_EX_DOUBLEBUFFER);
 
             // The checkbox always binds to subitem index 0 — there's no way
             // to attach it to a different subitem. To make it APPEAR as the
             // third (rightmost) column anyway, subitem 0 is defined as
             // "Keep up" but visually reordered to the end; subitems 1/2
             // (Resource/Amount) are reordered to appear first/second.
-            AddListViewColumn(list, 0, L"Keep up", 200);
-            AddListViewColumn(list, 1, L"Resource", 130);
-            AddListViewColumn(list, 2, L"Amount", 80);
+            AddListViewColumn(list, 0, L"Keep up", 220);
+            AddListViewColumn(list, 1, L"Resource", 155);
+            AddListViewColumn(list, 2, L"Amount", 100);
 
             int order[3] = { 1, 2, 0 }; // visual position -> underlying column index
             ListView_SetColumnOrderArray(list, 3, order);
@@ -226,13 +229,10 @@ namespace UI
         g_connectButton = CreateWindowW(L"BUTTON", L"Connect", WS_CHILD | WS_VISIBLE,
             0, 0, 10, 10, parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_CONNECT_BUTTON)), instance, nullptr);
 
+        g_alwaysOnTop = CreateWindowW(L"BUTTON", L"Always On Top", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
+            0, 0, 10, 10, parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_ALWAYS_ON_TOP_CHECKBOX)), instance, nullptr);
+
         g_moneyLabel = CreateWindowW(L"STATIC", L"Money: ", WS_CHILD | WS_VISIBLE,
-            0, 0, 10, 10, parent, nullptr, instance, nullptr);
-
-        g_moneyLockCheckbox = CreateWindowW(L"BUTTON", L"Lock", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
-            0, 0, 10, 10, parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_MONEY_LOCK_CHECKBOX)), instance, nullptr);
-
-        g_newMoneyLabel = CreateWindowW(L"STATIC", L"New Money:", WS_CHILD | WS_VISIBLE,
             0, 0, 10, 10, parent, nullptr, instance, nullptr);
 
         g_newMoneyEdit = CreateWindowW(L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
@@ -241,11 +241,17 @@ namespace UI
         g_setMoneyButton = CreateWindowW(L"BUTTON", L"Set Money", WS_CHILD | WS_VISIBLE,
             0, 0, 10, 10, parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_SET_MONEY_BUTTON)), instance, nullptr);
 
+        g_moneyLockCheckbox = CreateWindowW(L"BUTTON", L"Lock Money", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
+            0, 0, 10, 10, parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_MONEY_LOCK_CHECKBOX)), instance, nullptr);
+
         // --- Left column: all buildings ---
+        g_typeFilterLabel = CreateWindowW(L"STATIC", L"Type filter:", WS_CHILD | WS_VISIBLE,
+            0, 0, 10, 10, parent, nullptr, instance, nullptr);
+
         g_typeFilter = CreateWindowW(L"COMBOBOX", L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWNLIST | WS_VSCROLL,
             0, 0, 10, 10, parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_TYPE_FILTER)), instance, nullptr);
 
-        g_ownedOnlyCheckbox = CreateWindowW(L"BUTTON", L"Show only buildings I have",
+        g_ownedOnlyCheckbox = CreateWindowW(L"BUTTON", L"Show only building types I have",
             WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
             0, 0, 10, 10, parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_OWNED_ONLY_CHECKBOX)), instance, nullptr);
 
@@ -253,13 +259,15 @@ namespace UI
 
         g_buildingList = CreateWindowExW(
             0, WC_LISTVIEWW, L"",
-            WS_CHILD | WS_VISIBLE | WS_BORDER | LVS_REPORT | LVS_SINGLESEL,
+            WS_CHILD | WS_VISIBLE | WS_BORDER | LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS,
             0, 0, 10, 10, parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_BUILDING_LIST)), instance, nullptr);
 
-        ListView_SetExtendedListViewStyle(g_buildingList, LVS_EX_FULLROWSELECT | LVS_EX_GRIDLINES);
-        AddListViewColumn(g_buildingList, 0, L"Name", 220);
-        AddListViewColumn(g_buildingList, 1, L"Type", 140);
-        AddListViewColumn(g_buildingList, 2, L"Active", 60);
+        ListView_SetExtendedListViewStyle(g_buildingList, LVS_EX_FULLROWSELECT);
+        AddListViewColumn(g_buildingList, 0, L"Name", 320);
+        AddListViewColumn(g_buildingList, 1, L"Type", 155);
+
+        g_currentBuilding = CreateWindowW(L"STATIC", L"Active building:", WS_CHILD | WS_VISIBLE,
+            0, 0, 10, 10, parent, nullptr, instance, nullptr);
 
         g_selectedNameEdit = CreateWindowW(L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
             0, 0, 10, 10, parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_SELECTED_NAME_EDIT)), instance, nullptr);
@@ -275,10 +283,10 @@ namespace UI
         g_selectedSetAmountButton = CreateWindowW(L"BUTTON", L"Set Amount", WS_CHILD | WS_VISIBLE,
             0, 0, 10, 10, parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_SELECTED_SET_AMOUNT_BUTTON)), instance, nullptr);
 
-        g_selectedAddButton = CreateWindowW(L"BUTTON", L"+", WS_CHILD | WS_VISIBLE,
+        g_selectedAddButton = CreateWindowW(L"BUTTON", L"Add Resource", WS_CHILD | WS_VISIBLE,
             0, 0, 10, 10, parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_SELECTED_ADD_BUTTON)), instance, nullptr);
 
-        g_selectedRemoveButton = CreateWindowW(L"BUTTON", L"-", WS_CHILD | WS_VISIBLE,
+        g_selectedRemoveButton = CreateWindowW(L"BUTTON", L"Delete Resource", WS_CHILD | WS_VISIBLE,
             0, 0, 10, 10, parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_SELECTED_REMOVE_BUTTON)), instance, nullptr);
 
         g_selectedSetButton = CreateWindowW(L"BUTTON", L"Center Building", WS_CHILD | WS_VISIBLE,
@@ -299,10 +307,10 @@ namespace UI
         g_currentSetAmountButton = CreateWindowW(L"BUTTON", L"Set Amount", WS_CHILD | WS_VISIBLE,
             0, 0, 10, 10, parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_CURRENT_SET_AMOUNT_BUTTON)), instance, nullptr);
 
-        g_currentAddButton = CreateWindowW(L"BUTTON", L"+", WS_CHILD | WS_VISIBLE,
+        g_currentAddButton = CreateWindowW(L"BUTTON", L"Add Resource", WS_CHILD | WS_VISIBLE,
             0, 0, 10, 10, parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_CURRENT_ADD_BUTTON)), instance, nullptr);
 
-        g_currentRemoveButton = CreateWindowW(L"BUTTON", L"-", WS_CHILD | WS_VISIBLE,
+        g_currentRemoveButton = CreateWindowW(L"BUTTON", L"Delete Resource", WS_CHILD | WS_VISIBLE,
             0, 0, 10, 10, parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_CURRENT_REMOVE_BUTTON)), instance, nullptr);
 
         g_currentSetButton = CreateWindowW(L"BUTTON", L"Center Building", WS_CHILD | WS_VISIBLE,
@@ -313,6 +321,9 @@ namespace UI
 
         SetSelectedCenterEnabled(false);
         SetCurrentCenterEnabled(false);
+
+        SetSelectedAmountControlsEnabled(false);
+        SetCurrentAmountControlsEnabled(false);
 
         SetMoneyControlsEnabled(false);
 
@@ -325,100 +336,128 @@ namespace UI
     void Layout(HWND parent, int clientWidth, int clientHeight)
     {
         const int margin = 10;
-        const int statusHeight = 24;
-        const int filterClosedHeight = 24;
-        const int filterDropdownHeight = 200;
+        int rowGap = 6;
         const int editHeight = 24;
-        const int buttonWidth = 80;
-        const int rowGap = 6;
+        const int filterDropdownHeight = 200;
 
-        MoveWindow(g_status, margin, margin, clientWidth - margin * 3 - 100, statusHeight, TRUE);
-        MoveWindow(g_connectButton, clientWidth - margin - 100, margin, 100, statusHeight, TRUE);
+        const int comboYOffset = -2;
 
-        // --- Money row ---
-        int moneyRowY = margin * 2 + statusHeight;
-        int moneyLabelWidth = 130;
-        int moneyLockCheckboxWidth = 55;
-        int newMoneyLabelWidth = 85;
-        int newMoneyEditWidth = 140;
-        int setMoneyButtonWidth = 100;
+        const int columnWidth = (clientWidth - margin * 3) / 2;
+        const int leftX = margin;
+        const int rightX = leftX + columnWidth + margin;
 
-        int moneyX = margin;
-        MoveWindow(g_moneyLabel, moneyX, moneyRowY + 1, moneyLabelWidth, editHeight, TRUE);
-        moneyX += moneyLabelWidth + rowGap;
-        MoveWindow(g_moneyLockCheckbox, moneyX, moneyRowY - 1, moneyLockCheckboxWidth, editHeight, TRUE);
-        moneyX += moneyLockCheckboxWidth + rowGap;
-        MoveWindow(g_newMoneyLabel, moneyX, moneyRowY + 1, newMoneyLabelWidth, editHeight, TRUE);
-        moneyX += newMoneyLabelWidth + rowGap;
-        MoveWindow(g_newMoneyEdit, moneyX, moneyRowY - 1, newMoneyEditWidth, editHeight, TRUE);
-        moneyX += newMoneyEditWidth + rowGap;
-        MoveWindow(g_setMoneyButton, moneyX, moneyRowY - 1, setMoneyButtonWidth, editHeight, TRUE);
+        int y = margin;
+        int currentX = leftX;
 
-        int columnTop = moneyRowY + editHeight + margin;
+        const int statusWidth = 155;
+        const int connectBtnWidth = 81;
+        const int alwaysOnTopWidth = 120;
+
+        MoveWindow(g_status, currentX, y + 2, statusWidth, editHeight, TRUE);
+        currentX += statusWidth + rowGap;
+        MoveWindow(g_connectButton, currentX, y, connectBtnWidth, editHeight, TRUE);
+        currentX += connectBtnWidth + rowGap;
+        MoveWindow(g_alwaysOnTop, currentX - 1, y, alwaysOnTopWidth, editHeight, TRUE);
+
+        currentX = rightX;
+        const int moneyLabelWidth = 130;
+        const int newMoneyEditWidth = 90;
+        const int setMoneyBtnWidth = 93;
+        const int moneyLockWidth = 100;
+
+        MoveWindow(g_moneyLabel, currentX, y + 2, moneyLabelWidth, editHeight, TRUE);
+        currentX += moneyLabelWidth + rowGap;
+        MoveWindow(g_newMoneyEdit, currentX, y, newMoneyEditWidth, editHeight, TRUE);
+        currentX += newMoneyEditWidth + rowGap;
+        MoveWindow(g_setMoneyButton, currentX, y, setMoneyBtnWidth, editHeight, TRUE);
+        currentX += setMoneyBtnWidth + rowGap;
+        MoveWindow(g_moneyLockCheckbox, currentX, y, moneyLockWidth, editHeight, TRUE);
+
+
+        y += editHeight + margin;
+        int columnTop = y;
         int columnHeight = clientHeight - columnTop - margin;
-        int columnWidth = (clientWidth - margin * 3) / 2;
 
-        // --- Left column ---
-        int leftX = margin;
-        int y = columnTop;
+        // ---Left Column---
+        currentX = leftX;
 
-        const int checkboxWidth = 190;
-        int filterComboWidth = columnWidth - checkboxWidth - rowGap;
+        const int typeFilterLabelWidth = 64;
+        const int ownedOnlyWidth = 230;
 
-        MoveWindow(g_typeFilter, leftX, y, filterComboWidth, filterClosedHeight + filterDropdownHeight, TRUE);
-        MoveWindow(g_ownedOnlyCheckbox, leftX + filterComboWidth + rowGap, y, checkboxWidth, filterClosedHeight, TRUE);
-        y += filterClosedHeight + rowGap;
+        const int typeFilterComboWidth = columnWidth - typeFilterLabelWidth - ownedOnlyWidth - (rowGap * 2);
 
-        int leftRemaining = columnHeight - (y - columnTop) - editHeight - rowGap - editHeight - rowGap;
+        MoveWindow(g_typeFilterLabel, currentX, y + 2, typeFilterLabelWidth, editHeight, TRUE);
+        currentX += typeFilterLabelWidth + rowGap;
+        MoveWindow(g_typeFilter, currentX, y + comboYOffset, typeFilterComboWidth, editHeight + filterDropdownHeight, TRUE);
+        currentX += typeFilterComboWidth + rowGap;
+        MoveWindow(g_ownedOnlyCheckbox, currentX, y, ownedOnlyWidth, editHeight, TRUE);
+
+        y += editHeight + rowGap;
+
+        int leftRemaining = columnHeight - (y - columnTop) - (editHeight * 2) - (rowGap * 2);
         int buildingListHeight = leftRemaining / 2;
         int selectedInventoryHeight = leftRemaining - buildingListHeight;
 
         MoveWindow(g_buildingList, leftX, y, columnWidth, buildingListHeight, TRUE);
         y += buildingListHeight + rowGap;
 
-        MoveWindow(g_selectedNameEdit, leftX, y, columnWidth - buttonWidth - rowGap, editHeight, TRUE);
-        MoveWindow(g_selectedNameButton, leftX + columnWidth - buttonWidth, y, buttonWidth, editHeight, TRUE);
+        const int setNameBtnWidth = 80;
+        const int nameEditWidth = columnWidth - setNameBtnWidth - rowGap;
+        MoveWindow(g_selectedNameEdit, leftX, y, nameEditWidth, editHeight, TRUE);
+        MoveWindow(g_selectedNameButton, leftX + nameEditWidth + rowGap, y, setNameBtnWidth, editHeight, TRUE);
         y += editHeight + rowGap;
 
         MoveWindow(g_selectedInventoryList, leftX, y, columnWidth, selectedInventoryHeight, TRUE);
         y += selectedInventoryHeight + rowGap;
 
-        // Amount / Set Amount / Center Building, all on one row.
-        const int amountEditWidth = 80;
-        const int setAmountButtonWidth = 90;
-        const int centerButtonWidth = 150;
+        const int amountEditWidth = 70;
+        const int setAmountBtnWidth = 84;
+        const int centerBtnWidth = 105;
 
-        const int plusMinusWidth = 32;
+        const int addBtnWidth = 95;
+        const int removeBtnWidth = addBtnWidth + 13;
 
-        MoveWindow(g_selectedAmountEdit, leftX, y, amountEditWidth, editHeight, TRUE);
-        MoveWindow(g_selectedSetAmountButton, leftX + amountEditWidth + rowGap, y, setAmountButtonWidth, editHeight, TRUE);
+        rowGap = 4;
 
-        int selectedPlusX = leftX + amountEditWidth + rowGap + setAmountButtonWidth + rowGap;
-        MoveWindow(g_selectedAddButton, selectedPlusX, y, plusMinusWidth, editHeight, TRUE);
-        MoveWindow(g_selectedRemoveButton, selectedPlusX + plusMinusWidth + rowGap, y, plusMinusWidth, editHeight, TRUE);
+        currentX = leftX;
+        MoveWindow(g_selectedAmountEdit, currentX, y, amountEditWidth, editHeight, TRUE);
+        currentX += amountEditWidth + rowGap;
+        MoveWindow(g_selectedSetAmountButton, currentX, y, setAmountBtnWidth, editHeight, TRUE);
+        currentX += setAmountBtnWidth + rowGap;
+        MoveWindow(g_selectedAddButton, currentX, y, addBtnWidth, editHeight, TRUE);
+        currentX += addBtnWidth + rowGap;
+        MoveWindow(g_selectedRemoveButton, currentX, y, removeBtnWidth, editHeight, TRUE);
+        currentX += removeBtnWidth + rowGap;
+        MoveWindow(g_selectedSetButton, leftX + columnWidth - centerBtnWidth, y, centerBtnWidth, editHeight, TRUE);
 
-        MoveWindow(g_selectedSetButton, leftX + columnWidth - centerButtonWidth, y, centerButtonWidth, editHeight, TRUE);
-
-        // --- Right column ---
-        int rightX = leftX + columnWidth + margin;
+        // --- Right Column ---
         y = columnTop;
+        currentX = rightX;
 
-        MoveWindow(g_currentNameEdit, rightX, y, columnWidth - buttonWidth - rowGap, editHeight, TRUE);
-        MoveWindow(g_currentNameButton, rightX + columnWidth - buttonWidth, y, buttonWidth, editHeight, TRUE);
+        const int currentBuildingLabelWidth = 100;
+        const int currentNameEditWidth = columnWidth - currentBuildingLabelWidth - setNameBtnWidth - (rowGap * 2);
+
+        MoveWindow(g_currentBuilding, currentX, y + 2, currentBuildingLabelWidth, editHeight, TRUE);
+        currentX += currentBuildingLabelWidth + rowGap;
+        MoveWindow(g_currentNameEdit, currentX, y, currentNameEditWidth, editHeight, TRUE);
+        currentX += currentNameEditWidth + rowGap;
+        MoveWindow(g_currentNameButton, currentX, y, setNameBtnWidth, editHeight, TRUE);
         y += editHeight + rowGap;
 
-        int currentInventoryHeight = columnHeight - (y - columnTop) - editHeight - rowGap;
+        int currentInventoryHeight = columnHeight - (y - columnTop) - editHeight;
         MoveWindow(g_currentInventoryList, rightX, y, columnWidth, currentInventoryHeight, TRUE);
         y += currentInventoryHeight + rowGap;
 
-        MoveWindow(g_currentAmountEdit, rightX, y, amountEditWidth, editHeight, TRUE);
-        MoveWindow(g_currentSetAmountButton, rightX + amountEditWidth + rowGap, y, setAmountButtonWidth, editHeight, TRUE);
-
-        int currentPlusX = rightX + amountEditWidth + rowGap + setAmountButtonWidth + rowGap;
-        MoveWindow(g_currentAddButton, currentPlusX, y, plusMinusWidth, editHeight, TRUE);
-        MoveWindow(g_currentRemoveButton, currentPlusX + plusMinusWidth + rowGap, y, plusMinusWidth, editHeight, TRUE);
-
-        MoveWindow(g_currentSetButton, rightX + columnWidth - centerButtonWidth, y, centerButtonWidth, editHeight, TRUE);
+        currentX = rightX;
+        MoveWindow(g_currentAmountEdit, currentX, y, amountEditWidth, editHeight, TRUE);
+        currentX += amountEditWidth + rowGap;
+        MoveWindow(g_currentSetAmountButton, currentX, y, setAmountBtnWidth, editHeight, TRUE);
+        currentX += setAmountBtnWidth + rowGap;
+        MoveWindow(g_currentAddButton, currentX, y, addBtnWidth, editHeight, TRUE);
+        currentX += addBtnWidth + rowGap;
+        MoveWindow(g_currentRemoveButton, currentX, y, removeBtnWidth, editHeight, TRUE);
+        currentX += removeBtnWidth + rowGap;
+        MoveWindow(g_currentSetButton, rightX + columnWidth - centerBtnWidth, y, centerBtnWidth, editHeight, TRUE);
     }
 
     void SetStatus(const std::wstring& text)
@@ -460,6 +499,21 @@ namespace UI
         return SendMessageW(g_moneyLockCheckbox, BM_GETCHECK, 0, 0) == BST_CHECKED;
     }
 
+    void SetAlwaysOnTopChecked(bool checked)
+    {
+        SendMessageW(g_alwaysOnTop, BM_SETCHECK, checked ? BST_CHECKED : BST_UNCHECKED, 0);
+    }
+
+    bool GetAlwaysOnTopChecked()
+    {
+        return SendMessageW(g_alwaysOnTop, BM_GETCHECK, 0, 0) == BST_CHECKED;
+    }
+
+    void SetConnectButtonState(bool connected)
+    {
+        SetWindowTextW(g_connectButton, connected ? L"Disconnect" : L"Connect");
+    }
+
     void PopulateTypeFilter(const std::vector<std::wstring>& types)
     {
         wchar_t currentText[256] = {};
@@ -495,6 +549,16 @@ namespace UI
         SendMessageW(g_typeFilter, CB_SETCURSEL, 0, 0);
     }
 
+    void ClearTypeFilter()
+    {
+        SendMessageW(g_typeFilter, CB_RESETCONTENT, 0, 0);
+    }
+
+    void SetTypeFilterEnabled(bool enabled)
+    {
+        EnableWindow(g_typeFilter, enabled);
+    }
+
     void SetOwnedOnlyChecked(bool checked)
     {
         SendMessageW(g_ownedOnlyCheckbox, BM_SETCHECK, checked ? BST_CHECKED : BST_UNCHECKED, 0);
@@ -503,6 +567,11 @@ namespace UI
     bool GetOwnedOnlyChecked()
     {
         return SendMessageW(g_ownedOnlyCheckbox, BM_GETCHECK, 0, 0) == BST_CHECKED;
+    }
+
+    void SetOwnedOnlyEnabled(bool enabled)
+    {
+        EnableWindow(g_ownedOnlyCheckbox, enabled);
     }
 
     void PopulateBuildingList(const std::vector<BuildingListItem>& buildings)
@@ -543,11 +612,6 @@ namespace UI
             if (item.dictionaryName != buffer)
                 ListView_SetItemText(g_buildingList, i, 1, const_cast<wchar_t*>(item.dictionaryName.c_str()));
 
-            const wchar_t* activeText = item.active ? L"Yes" : L"No";
-            ListView_GetItemText(g_buildingList, i, 2, buffer, 256);
-            if (wcscmp(activeText, buffer) != 0)
-                ListView_SetItemText(g_buildingList, i, 2, const_cast<wchar_t*>(activeText));
-
             stillPresent.insert(address);
         }
 
@@ -564,7 +628,6 @@ namespace UI
 
             int index = ListView_InsertItem(g_buildingList, &lvItem);
             ListView_SetItemText(g_buildingList, index, 1, const_cast<wchar_t*>(item.dictionaryName.c_str()));
-            ListView_SetItemText(g_buildingList, index, 2, const_cast<wchar_t*>(item.active ? L"Yes" : L"No"));
         }
 
         ListView_SortItems(g_buildingList, CompareBuildingListItems, reinterpret_cast<LPARAM>(&desired));
@@ -607,10 +670,17 @@ namespace UI
 
     void SetSelectedCenterEnabled(bool enabled)
     {
-        EnableWindow(g_selectedSetButton, enabled);
-        EnableWindow(g_selectedSetAmountButton, enabled);
         EnableWindow(g_selectedAddButton, enabled);
+        EnableWindow(g_selectedSetButton, enabled);
+    }
+
+    void SetSelectedAmountControlsEnabled(bool enabled)
+    {
+        EnableWindow(g_selectedAmountEdit, enabled);
+        EnableWindow(g_selectedSetAmountButton, enabled);
         EnableWindow(g_selectedRemoveButton, enabled);
+        if (!enabled)
+            SetWindowTextW(g_selectedAmountEdit, L"");
     }
 
     void PopulateSelectedInventory(const std::vector<ResourceListItem>& resources,
@@ -651,10 +721,17 @@ namespace UI
 
     void SetCurrentCenterEnabled(bool enabled)
     {
-        EnableWindow(g_currentSetButton, enabled);
-        EnableWindow(g_currentSetAmountButton, enabled);
         EnableWindow(g_currentAddButton, enabled);
+        EnableWindow(g_currentSetButton, enabled);
+    }
+
+    void SetCurrentAmountControlsEnabled(bool enabled)
+    {
+        EnableWindow(g_currentAmountEdit, enabled);
+        EnableWindow(g_currentSetAmountButton, enabled);
         EnableWindow(g_currentRemoveButton, enabled);
+        if (!enabled)
+            SetWindowTextW(g_currentAmountEdit, L"");
     }
 
     void PopulateCurrentInventory(const std::vector<ResourceListItem>& resources,
@@ -714,14 +791,33 @@ namespace UI
             return false;
 
         // A row was just selected (plain click, or a checkbox click that
-        // also selects it below) — always fill the amount box with that
-        // row's current value. Subitem 2 = Amount in visual order.
+        // also selects it below) — fill the amount box with that row's
+        // current value AND enable it + "Set Amount", since both are now
+        // governed by resource selection, not by which building is picked.
         bool justSelected = !(nmlv->uOldState & LVIS_SELECTED) && (nmlv->uNewState & LVIS_SELECTED);
         if (justSelected)
         {
             wchar_t amountText[64] = {};
             ListView_GetItemText(list, nmlv->iItem, 2, amountText, 64);
             SetWindowTextW(amountEdit, amountText);
+
+            if (panel == InventoryPanel::Selected)
+                SetSelectedAmountControlsEnabled(true);
+            else
+                SetCurrentAmountControlsEnabled(true);
+        }
+
+        // A row was just DESELECTED (e.g. the list got repopulated without
+        // a matching previous selection) — disable again rather than
+        // leaving stale controls active for a resource that's no longer
+        // picked.
+        bool justDeselected = (nmlv->uOldState & LVIS_SELECTED) && !(nmlv->uNewState & LVIS_SELECTED);
+        if (justDeselected)
+        {
+            if (panel == InventoryPanel::Selected)
+                SetSelectedAmountControlsEnabled(false);
+            else
+                SetCurrentAmountControlsEnabled(false);
         }
 
         UINT oldCheck = (nmlv->uOldState & LVIS_STATEIMAGEMASK) >> 12;
@@ -787,6 +883,14 @@ namespace UI
                 auto* cs = reinterpret_cast<LPCREATESTRUCTW>(lParam);
                 SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(cs->lpCreateParams));
                 return 0;
+            }
+
+            case WM_CTLCOLORSTATIC:
+            case WM_CTLCOLORBTN:
+            {
+                HDC hdc = reinterpret_cast<HDC>(wParam);
+                SetBkMode(hdc, TRANSPARENT);
+                return reinterpret_cast<LRESULT>(GetSysColorBrush(COLOR_WINDOW));
             }
 
             case WM_COMMAND:
@@ -926,5 +1030,31 @@ namespace UI
         }
 
         return false;
+    }
+
+    void ResetOnDisconnect()
+    {
+        SetMoneyDisplay(L"");
+        SetNewMoneyEditText(L"");
+        SetMoneyLockChecked(false);
+        SetMoneyControlsEnabled(false);
+
+        ClearTypeFilter();
+        SetTypeFilterEnabled(false);
+        SetOwnedOnlyEnabled(false); // checked state deliberately untouched — it's a saved preference, not connection state
+
+        PopulateBuildingList({});
+
+        SetSelectedNameEditText(L"");
+        SetSelectedNameEnabled(false);
+        PopulateSelectedInventory({}, {});
+        SetSelectedAmountControlsEnabled(false);
+        SetSelectedCenterEnabled(false);
+
+        SetCurrentNameEditText(L"");
+        SetCurrentNameEnabled(false);
+        PopulateCurrentInventory({}, {});
+        SetCurrentAmountControlsEnabled(false);
+        SetCurrentCenterEnabled(false);
     }
 }

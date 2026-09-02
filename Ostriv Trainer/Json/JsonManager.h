@@ -32,6 +32,9 @@ public:
     bool Load();
     bool Save() const;
 
+    bool GetAlwaysOnTop() const;
+    void SetAlwaysOnTop(bool value);
+
     bool GetShowOnlyOwnedTypes() const;
     void SetShowOnlyOwnedTypes(bool value);
 
@@ -77,6 +80,9 @@ private:
     std::vector<BuildingRecord*> m_lockedRecords;
 
     bool m_showOnlyOwnedTypes = true;
+
+    bool m_alwaysOnTop = false;
+    bool m_loaded = false;
 
     bool m_moneyLocked = false;
     double m_moneyLockAmount = 0.0;

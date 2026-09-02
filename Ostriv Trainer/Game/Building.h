@@ -25,6 +25,10 @@ public:
     bool ResolveIdentity(uintptr_t address);
     bool IsIdentityResolved() const;
 
+    // Reads isActive/isDemolishing from this building's own address
+    // (Normal/Container) or its parent's (Child) — a Child's status is
+    // never meaningful on its own object, only on the RowHouse that owns
+    // it. A single fresh reading, taken as-is — no debouncing.
     bool RefreshStatus();
 
     bool HasPendingInventory() const;
@@ -33,16 +37,11 @@ public:
     bool IsValid() const;
 
     bool GetActiveStatus() const;
-    bool GetRawActiveStatus() const;
     bool IsDemolishing() const;
     bool HasResource() const;
 
     bool HasFamilyMoney() const;
     float GetFamilyMoney() const;
-
-    // Writes directly to the resident family's savings, for Apartment /
-    // Village house / Fenceless village house only. Returns false if this
-    // building isn't residential or no family has moved in yet.
     bool SetFamilyMoney(float amount);
 
     uintptr_t GetAddress() const;
@@ -65,21 +64,6 @@ public:
     static bool BuildDictionaryCache(RemoteMemory& memory);
     static const std::vector<std::wstring>& GetKnownTypeNames();
     static void ResetDictionaryCache();
-
-    void MarkSeenThisTick();
-    int MarkMissingThisTick();
-    int GetMissingTicks() const;
-
-    int MarkPresentTick();
-    int GetPresentTicks() const;
-
-    void MarkListVisible();
-    bool IsListVisible() const;
-
-    void AdvanceActiveStability();
-    int GetActiveStabilityTicks() const;
-
-    void PromoteActiveStatus();
 
 private:
     bool ReadBuildingName();
@@ -115,21 +99,13 @@ private:
 
     bool m_isActive;
     bool m_isDemolishing;
-    bool m_rawActiveStatus;
-
     bool m_activeStatus;
-    bool m_previousRawActiveStatus;
-    int m_activeStabilityTicks;
 
     bool m_hasResource;
     bool m_isResidential;
     bool m_hasFamilyMoney;
     float m_familyMoney;
-    uintptr_t m_familyAddress; // cached by RefreshInventory(); 0 if no family moved in yet
-
-    int m_missingTicks;
-    int m_presentTicks;
-    bool m_listVisible;
+    uintptr_t m_familyAddress;
 
     bool m_identityResolved;
 

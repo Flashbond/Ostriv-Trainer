@@ -82,6 +82,8 @@ private:
     void BuildBuildingTypes();
 
     void RefreshMoneyDisplay();
+    double m_lastDisplayedMoney = -1.0; // sentinel: no real balance is ever negative, so this always differs on the first call
+    bool m_hasDisplayedMoney = false;
 
     void BuildSelectedInventory();
     void BuildCurrentInventory();
@@ -116,7 +118,6 @@ private:
     MoneyController* m_moneyController;
 
     bool m_jsonInitialized;
-    bool m_typeFilterInitialized;
     bool m_showOnlyOwnedTypes;
 
     std::wstring m_currentTypeFilter;
