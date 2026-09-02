@@ -414,9 +414,6 @@ namespace UI
 
         g_selectedInventoryList = CreateInventoryListView(parent, IDC_SELECTED_INVENTORY_LIST, instance);
 
-        g_selectedAmountEdit = CreateWindowW(L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
-            0, 0, 10, 10, parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_SELECTED_AMOUNT_EDIT)), instance, nullptr);
-
         g_selectedAmountEdit = CreateWindowW(L"EDIT", L"0.00", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
             0, 0, 10, 10, parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_SELECTED_AMOUNT_EDIT)), instance, nullptr);
         SetWindowSubclass(g_selectedAmountEdit, NumericEditSubclassProc, 1, 0);

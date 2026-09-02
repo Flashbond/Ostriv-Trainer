@@ -139,6 +139,17 @@ bool Building::RefreshStatus()
 
     m_activeStatus = m_isActive && !m_isDemolishing;
 
+    // Inventory capacity belongs to THIS building's own object even for a
+    // Child (never inherited from a parent, unlike active/demolishing
+    // status) — and unlike the persistent unique id (derived once and
+    // never touched again, per tonight's finding), it genuinely can grow
+    // mid-session. Re-read every slow-tick cycle so
+    // Add/Remove/SetAmount always see the current capacity instead of
+    // whatever was captured back when identity was first resolved.
+    uint32_t currentCapacity = 0;
+    if (m_memory.Read(m_address + Ostriv::BUILDING_INVENTORY_SIZE_OFFSET, currentCapacity) && currentCapacity > 0)
+        m_type = currentCapacity;
+
     return true;
 }
 
@@ -443,7 +454,7 @@ void Building::ResetDictionaryCache()
 
 bool Building::ReadInventoryType()
 {
-    return m_memory.Read(m_address + Ostriv::BUILDING_INVENTORY_TYPE_OFFSET, m_type);
+    return m_memory.Read(m_address + Ostriv::BUILDING_INVENTORY_SIZE_OFFSET, m_type);
 }
 
 bool Building::ReadActiveAndDemolishingState(uintptr_t sourceAddress)
@@ -496,8 +507,17 @@ bool Building::ReadUniqueId(uintptr_t* outUniqueId)
         return false;
     }
 
+    // The id field sits right after the entries region, whose length
+    // scales with this building's own inventory capacity (m_type,
+    // already resolved by ReadInventoryType() earlier in
+    // ResolveIdentity()). NOT a fixed offset — see
+    // INVENTORY_ID_TRAILING_OFFSET's comment in OstrivOffsets.h.
+    uintptr_t idAddress = invArrayPtr +
+        (static_cast<uintptr_t>(m_type) * Ostriv::INVENTORY_ENTRY_SIZE) +
+        Ostriv::INVENTORY_ID_TRAILING_OFFSET;
+
     uint64_t idValue = 0;
-    if (!m_memory.Read(invArrayPtr + Ostriv::INVENTORY_ID_OFFSET, idValue) || idValue == 0)
+    if (!m_memory.Read(idAddress, idValue) || idValue == 0)
     {
         if (outUniqueId) *outUniqueId = 0;
         m_uniqueId = L"0";

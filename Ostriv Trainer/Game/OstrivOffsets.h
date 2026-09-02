@@ -49,7 +49,7 @@ namespace Ostriv
     // INGAME_BUILDINGS_TABLE), NOT a table of its own.
     // ============================================================
 
-    constexpr uintptr_t BUILDING_INVENTORY_TYPE_OFFSET = 0x1A8;
+    constexpr uintptr_t BUILDING_INVENTORY_SIZE_OFFSET = 0x1A8;
 
     constexpr uintptr_t INGAME_BUILDING_ACTIVE_STATUS_OFFSET = 0x1B0;
 
@@ -148,20 +148,28 @@ namespace Ostriv
     constexpr uintptr_t RESOURCE_NAME_PTR_OFFSET = 0x00;
     constexpr uintptr_t RESOURCE_NAME_LENGTH_OFFSET = 0x08;
 
-
     // ============================================================
     // Inventory
     // ============================================================
 
     constexpr uintptr_t INVENTORY_COUNT_OFFSET = 0x198;
     constexpr uintptr_t INVENTORY_ARRAY_OFFSET = 0x1A0;
-    constexpr uintptr_t INVENTORY_ID_OFFSET = 0x508;
 
-    constexpr int MAX_INVENTORY_ENTRIES = 256;
+    // The entries region is exactly capacity * INVENTORY_ENTRY_SIZE bytes
+    // long, with NO padding — confirmed by direct address-delta
+    // measurement on two live inventories of different capacities (64
+    // and 128), both matching exactly. Capacity is per-building, read
+    // from INVENTORY_TYPE_OFFSET (see its comment) — there is no fixed
+    // scan bound anymore.
+    constexpr uintptr_t INVENTORY_ID_TRAILING_OFFSET = 0x08;
 
+    // Sanity ceiling on a building's reported capacity — not a real
+    // limit, just a guard against a corrupted/misread value driving an
+    // absurd scan loop.
+    constexpr int32_t INVENTORY_CAPACITY_SANITY_MAX = 4096;
+    constexpr uintptr_t INVENTORY_STATUS_BLOCK_OFFSET = 0x08;
     constexpr uintptr_t INVENTORY_RESOURCE_ID_OFFSET = 0x00;
     constexpr uintptr_t INVENTORY_AMOUNT_OFFSET = 0x04;
-    constexpr uintptr_t INVENTORY_STATUS_BLOCK_OFFSET = 0x08;
     constexpr uintptr_t INVENTORY_AWAITING_OFFSET = 0x09;
     constexpr uintptr_t INVENTORY_RESERVED_OFFSET = 0x10;
 
@@ -178,16 +186,6 @@ namespace Ostriv
         0x00, 0x00, 0x80, 0xBF,
         0x00, 0x00, 0x00, 0x00
     };
-
-    // The entry array ends exactly where the building's persistent unique
-    // id begins (INVENTORY_ID_OFFSET / INVENTORY_ENTRY_SIZE divides evenly
-    // — the two regions abut with no gap). This is the real physical
-    // capacity, not just how many entries happen to be populated (count)
-    // — used as the safe upper bound when scanning for every instance of
-    // a resource, since batch production can split it across entries
-    // beyond the reported count.
-    constexpr size_t INVENTORY_MAX_SCAN_INDEX = INVENTORY_ID_OFFSET / INVENTORY_ENTRY_SIZE;
-
 
     // ============================================================
     // Camera and Hook Constants
