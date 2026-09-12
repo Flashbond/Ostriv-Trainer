@@ -12,7 +12,7 @@ class MoneyController
 public:
     explicit MoneyController(RemoteMemory& memory);
 
-    // One-time signature scan. Call once after attaching.
+    // One-time offset check. Call once after attaching.
     bool Resolve();
 
     bool IsResolved() const;

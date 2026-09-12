@@ -90,6 +90,7 @@ namespace UI
 
     // Enables/disables BOTH "Set Amount" and "Center Building" for this panel.
     void SetSelectedCenterEnabled(bool enabled);
+    void SetSelectedAddEnabled(bool enabled);
     void SetSelectedAmountControlsEnabled(bool enabled);
     void PopulateSelectedInventory(const std::vector<ResourceListItem>& resources, const std::unordered_set<int32_t>& lockedResourceIds);
     bool GetSelectedInventoryRow(int32_t& resourceId, std::wstring& amountEditText, bool& checked);
@@ -100,6 +101,7 @@ namespace UI
     void SetCurrentNameEnabled(bool enabled);
 
     void SetCurrentCenterEnabled(bool enabled);
+    void SetCurrentAddEnabled(bool enabled);
     void SetCurrentAmountControlsEnabled(bool enabled);
     void PopulateCurrentInventory(const std::vector<ResourceListItem>& resources, const std::unordered_set<int32_t>& lockedResourceIds);
     bool GetCurrentInventoryRow(int32_t& resourceId, std::wstring& amountEditText, bool& checked);

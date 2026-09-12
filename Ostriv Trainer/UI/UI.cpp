@@ -458,6 +458,9 @@ namespace UI
         SetSelectedCenterEnabled(false);
         SetCurrentCenterEnabled(false);
 
+        SetSelectedAddEnabled(false);
+        SetCurrentAddEnabled(false);
+
         SetSelectedAmountControlsEnabled(false);
         SetCurrentAmountControlsEnabled(false);
 
@@ -485,15 +488,19 @@ namespace UI
         int y = margin;
         int currentX = leftX;
 
-        const int statusWidth = 285;
         const int connectBtnWidth = 85;
         const int alwaysOnTopWidth = 110;
 
-        MoveWindow(g_status, currentX, y + 2, statusWidth, editHeight, TRUE);
-        currentX += statusWidth + rowGap;
-        MoveWindow(g_connectButton, currentX, y, connectBtnWidth, editHeight, TRUE);
-        currentX += connectBtnWidth + rowGap;
-        MoveWindow(g_alwaysOnTop, currentX - 1, y, alwaysOnTopWidth, editHeight, TRUE);
+        int leftColumnRightEdge = leftX + columnWidth;
+
+        int alwaysOnTopX = leftColumnRightEdge - alwaysOnTopWidth;
+        MoveWindow(g_alwaysOnTop, alwaysOnTopX, y, alwaysOnTopWidth, editHeight, TRUE);
+
+        int connectBtnX = alwaysOnTopX - rowGap - connectBtnWidth;
+        MoveWindow(g_connectButton, connectBtnX, y, connectBtnWidth, editHeight, TRUE);
+
+        int dynamicStatusWidth = connectBtnX - rowGap - leftX;
+        MoveWindow(g_status, leftX, y + 2, dynamicStatusWidth, editHeight, TRUE);
 
         currentX = rightX;
         const int moneyLabelWidth = 130;
@@ -806,8 +813,12 @@ namespace UI
 
     void SetSelectedCenterEnabled(bool enabled)
     {
-        EnableWindow(g_selectedAddButton, enabled);
         EnableWindow(g_selectedSetButton, enabled);
+    }
+
+    void SetSelectedAddEnabled(bool enabled)
+    {
+        EnableWindow(g_selectedAddButton, enabled);
     }
 
     void SetSelectedAmountControlsEnabled(bool enabled)
@@ -857,8 +868,12 @@ namespace UI
 
     void SetCurrentCenterEnabled(bool enabled)
     {
-        EnableWindow(g_currentAddButton, enabled);
         EnableWindow(g_currentSetButton, enabled);
+    }
+
+    void SetCurrentAddEnabled(bool enabled)
+    {
+        EnableWindow(g_currentAddButton, enabled);
     }
 
     void SetCurrentAmountControlsEnabled(bool enabled)

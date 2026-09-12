@@ -14,15 +14,18 @@ namespace Ostriv
     // Money
     // ============================================================
 
-    // 48 8B 05 xx xx xx xx  ->  mov rax, [rip+disp]   (state pointer load)
-    // F2 0F 10 80 F0 9C 13 00 -> movsd xmm0, [rax+0x139CF0]  (money field access, used as an anchor)
-    constexpr char MONEY_STATE_POINTER_SIGNATURE[] =
-        "48 8B 05 ?? ?? ?? ?? F2 0F 10 80 F0 9C 13 00";
-
-    constexpr int MONEY_STATE_POINTER_DISPLACEMENT_OFFSET = 3;
-    constexpr int MONEY_STATE_POINTER_INSTRUCTION_LENGTH = 7;
-
-    constexpr uintptr_t MONEY_OFFSET = 0x139CF0;
+    // Updated for game version 0.5.9.61 — confirmed via Cheat Engine
+    // (wrote a unique known value via Set Money, found it with a fresh
+    // Double scan, "find out what writes" showed
+    // mov rax,[+67F4F0]; movsd xmm0,[rax+139D18]).
+    // Switched from a signature scan to a direct static offset for the
+    // state pointer slot itself — same reasoning as
+    // INGAME_BUILDINGS_TABLE_OFFSET: this is a fixed global slot, not an
+    // instruction whose own bytes need pattern-matching.
+    // Previous values for 0.5.9.60: state pointer via signature scan
+    // "48 8B 05 ?? ?? ?? ?? F2 0F 10 80 F0 9C 13 00", MONEY_OFFSET=0x139CF0.
+    constexpr uintptr_t MONEY_STATE_POINTER_OFFSET = 0x67F4F0;
+    constexpr uintptr_t MONEY_OFFSET = 0x139D18;
 
     // ============================================================
     // Live Building Array (INGAME_BUILDINGS_TABLE)
@@ -33,7 +36,7 @@ namespace Ostriv
     // memory every slow tick; nothing here is guessed.
     // ============================================================
 
-    constexpr uintptr_t INGAME_BUILDINGS_TABLE_OFFSET = 0x6ABDF8;
+    constexpr uintptr_t INGAME_BUILDINGS_TABLE_OFFSET = 0x687E88;
 
     constexpr uintptr_t INGAME_BUILDINGS_TABLE_COUNT_OFFSET = 0x00;
     constexpr uintptr_t INGAME_BUILDINGS_TABLE_ARRAY_OFFSET = 0x08;
@@ -98,24 +101,14 @@ namespace Ostriv
 
     constexpr uint32_t ACTIVE_BUILDING_VALUE = 1;
 
-    // ============================================================
-    // Building Dictionary Table (BUILDING_DICTIONARY_TABLE)
-    //
-    // The game's static catalog of building TYPES (one row per type that
-    // exists in the game, whether or not the player has built one) — maps
-    // a raw id ("building_glassworks") to a display name ("Glassworks").
-    // Backed by a heap array that grows in fixed 64-row chunks and can
-    // relocate as new types are registered — but the two module-relative
-    // slots below, which hold the array's CURRENT pointer and count, are
-    // themselves static (confirmed via decompilation: FUN_14022d3b0 reads
-    // and writes them directly, no lookup of any kind). Read live every
-    // time, exactly like INGAME_BUILDINGS_TABLE — no signature scan
-    // needed, and none of the growth is our concern, only where to find
-    // the up-to-date pointer/count right now.
-    // ============================================================
-
-    constexpr uintptr_t BUILDING_DICTIONARY_TABLE_POINTER_OFFSET = 0x6A3B78;
-    constexpr uintptr_t BUILDING_DICTIONARY_TABLE_COUNT_OFFSET = 0x6A3B70;
+    // Updated for game version 0.5.9.61 — confirmed via Ghidra decompile
+    // of the building-id dictionary lookup routine
+    // (mov r8,[+67FBF8]; movsxd rax,[+67FBF0]; imul rax,rax,0xA8),
+    // same exact pointer/count layout and 0xA8 entry size as before,
+    // only the module-relative location shifted. Previous values for
+    // 0.5.9.60: pointer=0x6A3B78, count=0x6A3B70.
+    constexpr uintptr_t BUILDING_DICTIONARY_TABLE_POINTER_OFFSET = 0x67FBF8;
+    constexpr uintptr_t BUILDING_DICTIONARY_TABLE_COUNT_OFFSET = 0x67FBF0;
 
     // Sanity ceiling on the count read above — not a real capacity limit,
     // just a guard against a corrupted/misread value.
@@ -131,10 +124,16 @@ namespace Ostriv
     constexpr uintptr_t BUILDING_DICTIONARY_NAME_LENGTH_OFFSET = 0x18;
 
     // ============================================================
-     // Resource Table
-     // ============================================================
+    // Resource Table
+    // ============================================================
 
-    constexpr uintptr_t RESOURCE_TABLE_OFFSET = 0x6AE850;
+    // Updated for game version 0.5.9.61 — confirmed via Ghidra decompile
+    // (lea rsi,[+68A840] loading the base, followed by
+    // [rsi+resourceId*2*8] / [rsi+resourceId*2*8+08] for the name
+    // pointer/length pair — the same *0x10 stride expressed as *2 then
+    // *8, since x86 addressing only supports scale factors 1/2/4/8).
+    // Previous value for 0.5.9.60: 0x6AE850.
+    constexpr uintptr_t RESOURCE_TABLE_OFFSET = 0x68A840;
 
     constexpr size_t RESOURCE_ENTRY_SIZE = 0x10;
 
@@ -191,7 +190,10 @@ namespace Ostriv
     // Camera and Hook Constants
     // ============================================================
 
-    constexpr uintptr_t CAMERA_UPDATE_RVA = 0x2C6952;
+    // Updated for game version 0.5.9.61 — confirmed via Ghidra byte-pattern
+    // search for the unchanged instruction bytes/struct offset
+    // (movss [r15+0x11B678], xmm0). Previous value for 0.5.9.60: 0x2C6952.
+    constexpr uintptr_t CAMERA_UPDATE_RVA = 0x2B01B2;
 
     constexpr SIZE_T CAMERA_HOOK_SIZE = 9;
 
@@ -217,8 +219,10 @@ namespace Ostriv
     // ============================================================
     // Selection Hook
     // ============================================================
-
-    constexpr uintptr_t SELECTION_HOOK_RVA = 0x219680;
+    // Updated for game version 0.5.9.61 — same hook bytes/logic as
+    // before, only the module-relative location shifted. Previous value
+    // for 0.5.9.60: 0x219680
+    constexpr uintptr_t SELECTION_HOOK_RVA = 0x203FF0;
 
     constexpr size_t SELECTION_HOOK_SIZE = 5;
 

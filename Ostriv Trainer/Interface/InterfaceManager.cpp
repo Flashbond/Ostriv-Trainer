@@ -219,6 +219,7 @@ bool InterfaceManager::SelectBuilding(uintptr_t address)
         UI::SetSelectedNameEditText(item.displayName);
         UI::SetSelectedNameEnabled(true);
         UI::SetSelectedCenterEnabled(true);
+        UI::SetSelectedAddEnabled(building->GetType() > 0); // no inventory (e.g. a RowHouse container) → nothing to add to
     }
 
     return true;
@@ -235,6 +236,7 @@ void InterfaceManager::ClearSelection()
     UI::SetSelectedNameEditText(L"");
     UI::SetSelectedNameEnabled(false);
     UI::SetSelectedCenterEnabled(false);
+    UI::SetSelectedAddEnabled(false);
 }
 
 bool InterfaceManager::SetSelectedResourceAmount(int32_t resourceId, float desiredAmount, bool locked)
@@ -325,6 +327,7 @@ bool InterfaceManager::SetCurrentBuilding(uintptr_t address)
             UI::SetCurrentNameEditText(item.displayName);
             UI::SetCurrentNameEnabled(true);
             UI::SetCurrentCenterEnabled(true);
+            UI::SetCurrentAddEnabled(building->GetType() > 0);
         }
 
         building->RefreshInventory();
@@ -346,6 +349,7 @@ void InterfaceManager::ClearCurrentBuilding()
     UI::SetCurrentNameEditText(L"");
     UI::SetCurrentNameEnabled(false);
     UI::SetCurrentCenterEnabled(false);
+    UI::SetCurrentAddEnabled(false);
 }
 
 bool InterfaceManager::SetCurrentResourceAmount(int32_t resourceId, float desiredAmount, bool locked)

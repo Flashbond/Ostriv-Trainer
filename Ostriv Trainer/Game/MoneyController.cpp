@@ -11,19 +11,20 @@ bool MoneyController::Resolve()
 {
     m_statePointerAddress = 0;
 
-    uintptr_t instruction = m_memory.FindPattern(Ostriv::MONEY_STATE_POINTER_SIGNATURE);
-    if (!instruction)
+    uintptr_t candidate = m_memory.GetModuleBase() + Ostriv::MONEY_STATE_POINTER_OFFSET;
+
+    // Sanity-check the slot actually holds a plausible pointer before
+    // trusting it — cheap and catches an offset that's silently wrong
+    // (e.g. after a future game update) instead of quietly resolving to
+    // garbage.
+    uintptr_t statePointer = 0;
+    if (!m_memory.Read(candidate, statePointer) || statePointer == 0)
         return false;
 
-    uintptr_t resolved = m_memory.ResolveRipRelative(
-        instruction,
-        Ostriv::MONEY_STATE_POINTER_DISPLACEMENT_OFFSET,
-        Ostriv::MONEY_STATE_POINTER_INSTRUCTION_LENGTH);
-
-    if (!resolved)
+    if (statePointer < Ostriv::MIN_VALID_POINTER || statePointer > Ostriv::MAX_VALID_POINTER)
         return false;
 
-    m_statePointerAddress = resolved;
+    m_statePointerAddress = candidate;
     return true;
 }
 
