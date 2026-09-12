@@ -61,7 +61,7 @@ The trainer automatically creates and maintains an `ostriv_trainer.json` file ne
   - A permanent registry of every building the trainer has ever seen, keyed by a stable per-building identifier — so a building keeps its custom name and identity even if it becomes temporarily inactive or you reconnect later.
   - Any **custom name** you've assigned to a building.
   - Any active **resource/money locks** and the amount each is locked to.
-  - Your **"show only buildings I have"** filter preference and **global money lock** state, so they're remembered the next time you launch the trainer.
+  - Your **"show only buildings I have"** filter preference in order to remembered the next time you launch the trainer.
 - The file is a plain, human-readable JSON file — feel free to open it in a text editor to inspect it, but avoid hand-editing it while the trainer is running.
 
 ## A note on save games
