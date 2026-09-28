@@ -9,6 +9,7 @@
 
 class RemoteMemory;
 class ResourceManager;
+struct ResolvedOffsets;
 
 class Building
 {
@@ -61,7 +62,7 @@ public:
     Inventory& GetInventory();
     const Inventory& GetInventory() const;
 
-    static bool BuildDictionaryCache(RemoteMemory& memory);
+    static bool BuildDictionaryCache(RemoteMemory& memory, const ResolvedOffsets& offsets);
     static const std::vector<std::wstring>& GetKnownTypeNames();
     static void ResetDictionaryCache();
 

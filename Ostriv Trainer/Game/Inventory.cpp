@@ -1,6 +1,6 @@
 #include "Inventory.h"
 #include "../Core/RemoteMemory.h"
-#include "OstrivOffsets.h"
+#include "../Offsets/OstrivOffsets.h"
 #include "ResourceManager.h"
 #include <algorithm>
 #include <cmath>

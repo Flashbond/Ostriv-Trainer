@@ -1,6 +1,6 @@
 #include "BuildingManager.h"
 #include "../Core/RemoteMemory.h"
-#include "OstrivOffsets.h"
+#include "../Offsets/OstrivOffsets.h"
 #include "ResourceManager.h"
 #include <algorithm>
 #include <execution>
@@ -8,10 +8,10 @@
 #include <numeric>
 #include <unordered_set>
 
-BuildingManager::BuildingManager(RemoteMemory& memory, ResourceManager& resourceManager, uintptr_t moduleBase)
+BuildingManager::BuildingManager(RemoteMemory& memory, ResourceManager& resourceManager, const ResolvedOffsets& offsets)
     : m_memory(memory),
     m_resourceManager(resourceManager),
-    m_moduleBase(moduleBase),
+    m_offsets(offsets),
     m_buildingTable(0),
     m_buildingCount(0),
     m_ready(false),
@@ -27,15 +27,16 @@ bool BuildingManager::ResolveBuildingTable()
     m_buildingCount = 0;
     m_ready = false;
 
-    uintptr_t managerAddress = m_moduleBase + Ostriv::INGAME_BUILDINGS_TABLE_OFFSET;
-
     uintptr_t tableAddress = 0;
     int32_t count = 0;
 
-    if (!m_memory.Read(managerAddress + Ostriv::INGAME_BUILDINGS_TABLE_ARRAY_OFFSET, tableAddress))
+    if (!m_offsets.buildingsCountSlot || !m_offsets.buildingsArraySlot)
         return false;
 
-    if (!m_memory.Read(managerAddress + Ostriv::INGAME_BUILDINGS_TABLE_COUNT_OFFSET, count))
+    if (!m_memory.Read(m_offsets.buildingsArraySlot, tableAddress))
+        return false;
+
+    if (!m_memory.Read(m_offsets.buildingsCountSlot, count))
         return false;
 
     if (!tableAddress)
@@ -148,7 +149,7 @@ BuildingManager::SyncResult BuildingManager::RunFullScan()
     if (!m_buildingTable || m_buildingCount <= 0)
         return result;
 
-    Building::BuildDictionaryCache(m_memory);
+    Building::BuildDictionaryCache(m_memory, m_offsets);
 
     std::vector<uintptr_t> currentAddresses;
     std::mutex addressesMutex;

@@ -1,7 +1,7 @@
 #include "SelectionTracker.h"
 #include "../Core/RemoteMemory.h"
 #include "../Core/DetourHook.h"
-#include "OstrivOffsets.h"
+#include "../Offsets/OstrivOffsets.h"
 
 namespace
 {
@@ -27,9 +27,15 @@ SelectionTracker::~SelectionTracker()
     Uninstall();
 }
 
-bool SelectionTracker::Install()
+bool SelectionTracker::Install(const ResolvedOffsets& offsets)
 {
     m_lastError.clear();
+
+    if (offsets.cameraHook == 0 || offsets.selectionHook == 0)
+    {
+        m_lastError = L"hook site not found";
+        return false;
+    }
 
     if (m_hook->IsInstalled())
     {
@@ -73,6 +79,7 @@ bool SelectionTracker::Install()
 
     m_selectedBuildingAddress = 0;
     m_lastCounter = 0;
+    m_missedTicks = 0;
 
     return true;
 }
@@ -90,6 +97,7 @@ void SelectionTracker::Uninstall()
 
     m_selectedBuildingAddress = 0;
     m_lastCounter = 0;
+    m_missedTicks = 0;
 }
 
 bool SelectionTracker::IsInstalled() const
@@ -116,11 +124,21 @@ bool SelectionTracker::Update()
 
     // The hook did not fire since the last poll: no building panel was
     // rendered this interval, which means nothing is selected anymore.
+    constexpr int kMissedTicksBeforeDeselect = 2; // ~0.8 s at the 200 ms fast tick
+
     if (counter == m_lastCounter)
     {
-        m_selectedBuildingAddress = 0;
+        // The hook only fires while the building panel is being drawn. One
+        // skipped redraw is not a deselection, so wait a few ticks before
+        // believing it. Otherwise the panel blanks and refills at random.
+        if (++m_missedTicks >= kMissedTicksBeforeDeselect)
+            m_selectedBuildingAddress = 0;
         return true;
     }
+
+    m_missedTicks = 0;
+    m_lastCounter = counter;
+    m_selectedBuildingAddress = static_cast<uintptr_t>(selected);
 
     m_lastCounter = counter;
     m_selectedBuildingAddress = static_cast<uintptr_t>(selected);

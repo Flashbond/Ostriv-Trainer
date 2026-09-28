@@ -84,6 +84,9 @@ void InterfaceManager::SlowUpdate()
 
     if (result.scanned)
         RefreshTypeFilterOptions();
+
+    if (result.scanned && m_buildingManager.GetBuildingCount() == 0)
+        UI::SetStatus(L"Connected, but no buildings recognized — offsets are probably outdated for this game version.");
 }
 
 void InterfaceManager::ApplyResourceLocks()

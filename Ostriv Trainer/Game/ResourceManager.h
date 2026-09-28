@@ -10,7 +10,7 @@ class RemoteMemory;
 class ResourceManager
 {
 public:
-    ResourceManager(RemoteMemory& memory, uintptr_t moduleBase);
+    ResourceManager(RemoteMemory&, uintptr_t tableAddress);
 
     bool GetResourceName(int32_t resourceId, std::wstring& name) const;
 
@@ -22,7 +22,7 @@ public:
 
 private:
     RemoteMemory& m_memory;
-    uintptr_t m_moduleBase;
+    uintptr_t m_tableAddress;
 
     std::vector<std::pair<int32_t, std::wstring>> m_knownResources;
     bool m_cacheBuilt = false;

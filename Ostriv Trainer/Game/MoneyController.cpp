@@ -1,13 +1,13 @@
 #include "MoneyController.h"
 #include "../Core/RemoteMemory.h"
-#include "OstrivOffsets.h"
+#include "../Offsets/OstrivOffsets.h"
 
 MoneyController::MoneyController(RemoteMemory& memory)
     : m_memory(memory), m_statePointerAddress(0)
 {
 }
 
-bool MoneyController::Resolve()
+bool MoneyController::Resolve(const ResolvedOffsets& offsets)
 {
     m_statePointerAddress = 0;
 
@@ -24,7 +24,7 @@ bool MoneyController::Resolve()
     if (statePointer < Ostriv::MIN_VALID_POINTER || statePointer > Ostriv::MAX_VALID_POINTER)
         return false;
 
-    m_statePointerAddress = candidate;
+    m_statePointerAddress = offsets.moneyStateSlot; return m_statePointerAddress != 0;
     return true;
 }
 

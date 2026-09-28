@@ -1,6 +1,6 @@
 #include "ResourceManager.h"
 #include "../Core/RemoteMemory.h"
-#include "OstrivOffsets.h"
+#include "../Offsets/OstrivOffsets.h"
 
 #include <algorithm>
 
@@ -55,16 +55,17 @@ static bool IsExcludedResourceName(const std::wstring& name)
     return false;
 }
 
-ResourceManager::ResourceManager(RemoteMemory& memory, uintptr_t moduleBase)
-    : m_memory(memory), m_moduleBase(moduleBase) {
+ResourceManager::ResourceManager(RemoteMemory& memory, uintptr_t tableAddress)
+    : m_memory(memory),m_tableAddress(tableAddress) {
 }
 
 bool ResourceManager::GetResourceName(int32_t resourceId, std::wstring& name) const {
+    if (!m_tableAddress) return false;
     name.clear();
 
     if (resourceId < 0 || resourceId > 5000) return false;
 
-    uintptr_t entryAddress = m_moduleBase + Ostriv::RESOURCE_TABLE_OFFSET + (static_cast<uintptr_t>(resourceId) * Ostriv::RESOURCE_ENTRY_SIZE);
+    uintptr_t entryAddress = m_tableAddress + static_cast<uintptr_t>(resourceId) * Ostriv::RESOURCE_ENTRY_SIZE;
 
     uintptr_t nameAddress = 0;
     int32_t nameLength = 0;

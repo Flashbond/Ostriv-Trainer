@@ -24,7 +24,7 @@ namespace Ostriv
     // instruction whose own bytes need pattern-matching.
     // Previous values for 0.5.9.60: state pointer via signature scan
     // "48 8B 05 ?? ?? ?? ?? F2 0F 10 80 F0 9C 13 00", MONEY_OFFSET=0x139CF0.
-    constexpr uintptr_t MONEY_STATE_POINTER_OFFSET = 0x67F4F0;
+    constexpr uintptr_t MONEY_STATE_POINTER_OFFSET = 0x67D6B0;
     constexpr uintptr_t MONEY_OFFSET = 0x139D18;
 
     // ============================================================
@@ -36,7 +36,7 @@ namespace Ostriv
     // memory every slow tick; nothing here is guessed.
     // ============================================================
 
-    constexpr uintptr_t INGAME_BUILDINGS_TABLE_OFFSET = 0x687E88;
+    constexpr uintptr_t INGAME_BUILDINGS_TABLE_OFFSET = 0x686048;
 
     constexpr uintptr_t INGAME_BUILDINGS_TABLE_COUNT_OFFSET = 0x00;
     constexpr uintptr_t INGAME_BUILDINGS_TABLE_ARRAY_OFFSET = 0x08;
@@ -58,14 +58,49 @@ namespace Ostriv
 
     constexpr uintptr_t INGAME_BUILDING_DEMOLISHING_STATUS_OFFSET = 0x298;
 
+    // ------------------------------------------------------------
+    // Re-finding the building-object offsets below after a game update
+    //   INGAME_BUILDING_FAMILY_POINTER_OFFSET
+    //   INGAME_BUILDING_PARENT_OFFSET_APARTMENT
+    //   INGAME_BUILDING_PARENT_OFFSET_SHOP
+    //
+    // These are fields inside the building class, so they move together
+    // when a field is added or removed before them. In 0.5.9.62 the family
+    // pointer moved from 0x7C8 to 0x7E0 (+0x18); try the same shift first
+    // for the other two.
+    //
+    // 1. Disconnect the trainer first: while connected, our own JMP patch
+    //    sits on the hook site and collides with a debugger breakpoint.
+    // 2. In Cheat Engine, put a breakpoint on ostriv.exe + SELECTION_HOOK_RVA
+    //    (the OffsetResolver report prints the current value) and click a
+    //    building in the game. RCX = that building's address (B). Remove the
+    //    breakpoint right away: the function runs every frame while the panel
+    //    is open.
+    // 3. Dump B+0x780 .. B+0x880 and look for 8-byte pointers:
+    //    FAMILY: pick a house that has a family and find the pointer whose
+    //            target + FAMILY_MONEY_OFFSET holds the family's money (float).
+    //    PARENT: find the pointer whose target's +0x18 id string starts with
+    //            "building_rowhouse". Do it once for an Apartment and once
+    //            for a Shop.
+    //
+    // A wrong parent offset does not crash: Building::ResolveParentAddress
+    // checks the target's id string, so Apartments/Shops simply vanish from
+    // the list. A wrong family offset is worse, since Family Money is
+    // written to. Do not press Set Amount on that row until it is verified.
+    //
+    // FAMILY_MONEY_OFFSET lives in the family object, a different class, and
+    // did not move in 0.5.9.62. It can still move on its own.
+    //
+    // Last verified: 0.5.9.62.
+    // ------------------------------------------------------------
     // Child -> owning RowHouse container. The parent's own position and
     // active/demolishing status are authoritative for its children.
-    constexpr uintptr_t INGAME_BUILDING_PARENT_OFFSET_APARTMENT = 0x7D8;
-    constexpr uintptr_t INGAME_BUILDING_PARENT_OFFSET_SHOP = 0x828;
+    constexpr uintptr_t INGAME_BUILDING_PARENT_OFFSET_APARTMENT = 0x7F0;
+    constexpr uintptr_t INGAME_BUILDING_PARENT_OFFSET_SHOP = 0x840;
 
     // Apartment / Village house / Fenceless village house -> the resident
     // family object. May be null if no family has moved in yet.
-    constexpr uintptr_t INGAME_BUILDING_FAMILY_POINTER_OFFSET = 0x7C8;
+    constexpr uintptr_t INGAME_BUILDING_FAMILY_POINTER_OFFSET = 0x7E0;
 
     // Family object -> household savings.
     constexpr uintptr_t FAMILY_MONEY_OFFSET = 0x128;
@@ -107,8 +142,8 @@ namespace Ostriv
     // same exact pointer/count layout and 0xA8 entry size as before,
     // only the module-relative location shifted. Previous values for
     // 0.5.9.60: pointer=0x6A3B78, count=0x6A3B70.
-    constexpr uintptr_t BUILDING_DICTIONARY_TABLE_POINTER_OFFSET = 0x67FBF8;
-    constexpr uintptr_t BUILDING_DICTIONARY_TABLE_COUNT_OFFSET = 0x67FBF0;
+    constexpr uintptr_t BUILDING_DICTIONARY_TABLE_POINTER_OFFSET = 0x67DDB8;
+    constexpr uintptr_t BUILDING_DICTIONARY_TABLE_COUNT_OFFSET = 0x67DDB0;
 
     // Sanity ceiling on the count read above — not a real capacity limit,
     // just a guard against a corrupted/misread value.
@@ -127,13 +162,12 @@ namespace Ostriv
     // Resource Table
     // ============================================================
 
-    // Updated for game version 0.5.9.61 — confirmed via Ghidra decompile
-    // (lea rsi,[+68A840] loading the base, followed by
-    // [rsi+resourceId*2*8] / [rsi+resourceId*2*8+08] for the name
-    // pointer/length pair — the same *0x10 stride expressed as *2 then
-    // *8, since x86 addressing only supports scale factors 1/2/4/8).
-    // Previous value for 0.5.9.60: 0x6AE850.
-    constexpr uintptr_t RESOURCE_TABLE_OFFSET = 0x68A840;
+    // Confirmed in Ghidra for 0.5.9.62: DAT_140688a10 is referenced by
+    // FUN_14021be70 (the function that defines every resource) and by the
+    // exit-time destructor thunk. NOT 0x688A00: that is the capacity field
+    // of a static vector inside FUN_140203ca0.
+    // Previous: 0x68A840 (0.5.9.61), 0x6AE850 (0.5.9.60).
+    constexpr uintptr_t RESOURCE_TABLE_OFFSET = 0x688A10;
 
     constexpr size_t RESOURCE_ENTRY_SIZE = 0x10;
 
@@ -189,11 +223,12 @@ namespace Ostriv
     // ============================================================
     // Camera and Hook Constants
     // ============================================================
-
-    // Updated for game version 0.5.9.61 — confirmed via Ghidra byte-pattern
-    // search for the unchanged instruction bytes/struct offset
-    // (movss [r15+0x11B678], xmm0). Previous value for 0.5.9.60: 0x2C6952.
-    constexpr uintptr_t CAMERA_UPDATE_RVA = 0x2B01B2;
+    // Fallback only: last known location, used when the signature scan
+    // finds nothing — typically because a previous session left our own
+    // JMP patch here (the bytes no longer match, but DetourHook can still
+    // recognize and undo its own leftover patch at a known address).
+    // Doesn't need updating every game patch. Last set for 0.5.9.62.
+    constexpr uintptr_t CAMERA_UPDATE_RVA = 0x2B00B2;
 
     constexpr SIZE_T CAMERA_HOOK_SIZE = 9;
 
@@ -219,10 +254,11 @@ namespace Ostriv
     // ============================================================
     // Selection Hook
     // ============================================================
-    // Updated for game version 0.5.9.61 — same hook bytes/logic as
+    // Updated for game version 0.5.9.62 — same hook bytes/logic as
     // before, only the module-relative location shifted. Previous value
     // for 0.5.9.60: 0x219680
-    constexpr uintptr_t SELECTION_HOOK_RVA = 0x203FF0;
+    //for 0.5.9.61: 0x203FF0
+    constexpr uintptr_t SELECTION_HOOK_RVA = 0x203CA0;
 
     constexpr size_t SELECTION_HOOK_SIZE = 5;
 
@@ -239,4 +275,56 @@ namespace Ostriv
 
     constexpr size_t MAX_STRING_LENGTH = 64;
     constexpr size_t MAX_BUILDING_ID_LENGTH = 1024;
+
+    // ============================================================
+    // Signatures (used by OffsetResolver, first candidate for each item)
+    // "??" = bytes that change between builds (RIP-relative displacements).
+    // Everything else in this file is the last-known fallback.
+    // ============================================================
+
+    constexpr char INGAME_BUILDINGS_TABLE_SIGNATURE[] =
+        "48 63 05 ?? ?? ?? ?? 4D 85 C0 4D 8B E1 4D 8B F0 40 0F 94 C6 4C 8B EA 85 C0 7E ?? 48 8B 3D ?? ?? ?? ?? 48 8D 2C C7";
+    constexpr size_t INGAME_BUILDINGS_TABLE_SIG_COUNT_INSN = 0;   // movsxd rax,[rip+count]
+    constexpr size_t INGAME_BUILDINGS_TABLE_SIG_ARRAY_INSN = 27;  // mov rdi,[rip+array]
+
+    constexpr char BUILDING_DICTIONARY_TABLE_SIGNATURE[] =
+        "4C 8B 05 ?? ?? ?? ?? 48 63 05 ?? ?? ?? ?? 85 C0 49 0F 4F F0 7E ?? 48 69 C0 A8 00 00 00 49 03 C0";
+    constexpr size_t BUILDING_DICTIONARY_TABLE_SIG_POINTER_INSN = 0;
+    constexpr size_t BUILDING_DICTIONARY_TABLE_SIG_COUNT_INSN = 7;
+
+    // The money field offset (18 9D 13 00) is deliberately NOT wildcarded:
+    // many state fields are read with this same instruction shape, so the
+    // concrete offset is what makes the match unique. Update it together
+    // with MONEY_OFFSET.
+    constexpr char MONEY_STATE_POINTER_SIGNATURE[] =
+        "48 8B 05 ?? ?? ?? ?? F2 0F 10 80 18 9D 13 00";
+    constexpr size_t MONEY_STATE_POINTER_SIG_INSN = 0;
+
+    constexpr char CAMERA_HOOK_SIGNATURE[] = "F3 41 0F 11 87 78 B6 11 00";
+
+    // Not derived yet — the resolver falls back to SELECTION_HOOK_RVA.
+    constexpr char SELECTION_HOOK_SIGNATURE[] = "";
+
+    // ============================================================
+    // Manual overrides (hints for OffsetResolver)
+    //
+    // 0 = unused. Fill one in only when the resolver cannot find an item
+    // on its own. The value is the item's module-relative address, same
+    // meaning as the matching *_OFFSET / *_RVA constant:
+    //   buildings table     -> count slot   (array pointer is 0x08 after it)
+    //   building dictionary -> count slot   (pointer slot is 0x08 after it)
+    //   resource table      -> address of entry 0
+    //   money               -> the slot holding the state-object pointer
+    //   hooks               -> the instruction to patch
+    // An override is validated like any other candidate. A rejected one is
+    // ignored and reported. Clear overrides after each game update, or
+    // they go stale the same way the last-known values do.
+    // ============================================================
+
+    constexpr uintptr_t INGAME_BUILDINGS_TABLE_OVERRIDE = 0;
+    constexpr uintptr_t BUILDING_DICTIONARY_TABLE_OVERRIDE = 0;
+    constexpr uintptr_t RESOURCE_TABLE_OVERRIDE = 0;
+    constexpr uintptr_t MONEY_STATE_POINTER_OVERRIDE = 0;
+    constexpr uintptr_t CAMERA_HOOK_OVERRIDE = 0;
+    constexpr uintptr_t SELECTION_HOOK_OVERRIDE = 0;
 }

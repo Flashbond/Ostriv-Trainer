@@ -1,7 +1,8 @@
 #include "Building.h"
 
 #include "../Core/RemoteMemory.h"
-#include "OstrivOffsets.h"
+#include "../Offsets/OstrivOffsets.h"
+#include "../Offsets/OffsetResolver.h"
 #include "ResourceManager.h"
 
 #include <algorithm>
@@ -356,7 +357,7 @@ bool Building::FindBuildingEntry(const std::string& selectedId, uintptr_t& found
     return false;
 }
 
-bool Building::BuildDictionaryCache(RemoteMemory& memory)
+bool Building::BuildDictionaryCache(RemoteMemory& memory, const ResolvedOffsets& offsets)
 {
     if (s_isDictionaryLoaded)
         return true;
@@ -366,15 +367,14 @@ bool Building::BuildDictionaryCache(RemoteMemory& memory)
     if (s_isDictionaryLoaded)
         return true;
 
-    uintptr_t moduleBase = memory.GetModuleBase();
 
     uintptr_t table = 0;
     int32_t count = 0;
 
-    if (!memory.Read(moduleBase + Ostriv::BUILDING_DICTIONARY_TABLE_POINTER_OFFSET, table))
+    if (!memory.Read(offsets.dictionaryPointerSlot, table))
         return false;
 
-    if (!memory.Read(moduleBase + Ostriv::BUILDING_DICTIONARY_TABLE_COUNT_OFFSET, count))
+    if (!memory.Read(offsets.dictionaryCountSlot, count))
         return false;
 
     if (!table || count <= 0)
@@ -492,6 +492,19 @@ bool Building::ResolveParentAddress()
     if (parent < Ostriv::MIN_VALID_POINTER || parent > Ostriv::MAX_VALID_POINTER)
         return false;
 
+    // A plausible pointer isn't enough: a wrong offset after a game update
+    // usually still lands on *some* pointer. The real parent is a RowHouse,
+    // whose own id string (same +0x18 pointer every building has) starts
+    // with "building_rowhouse" — that is very hard to hit by accident.
+    uintptr_t idPtr = 0;
+    if (!m_memory.Read(parent + Ostriv::INGAME_BUILDING_ID_PTR_OFFSET, idPtr) || idPtr == 0)
+        return false;
+
+    char text[17] = {};
+    if (!m_memory.ReadBytes(idPtr, text, sizeof(text)) ||
+        std::memcmp(text, "building_rowhouse", sizeof(text)) != 0)
+        return false;
+
     m_parentAddress = parent;
     return true;
 }
@@ -534,5 +547,5 @@ std::wstring Building::MakePositionBasedId(float x, float y)
 {
     int64_t ix = static_cast<int64_t>(x);
     int64_t iy = static_cast<int64_t>(y);
-    return L"pos_" + std::to_wstring(ix) + L"_" + std::to_wstring(iy);
+    return std::to_wstring(ix) + L"_" + std::to_wstring(iy);
 }

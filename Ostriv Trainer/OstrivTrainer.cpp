@@ -23,7 +23,7 @@
 #include "Game/ResourceManager.h"
 #include "Game/BuildingManager.h"
 #include "Game/SelectionTracker.h"
-#include "Game/OstrivOffsets.h"
+#include "Offsets/OstrivOffsets.h"
 #include "Game/MoneyController.h"
 #include "Json/JsonManager.h"
 #include "Interface/InterfaceManager.h"
@@ -42,6 +42,7 @@ namespace
     ProcessManager g_processManager;
     RemoteMemory g_remoteMemory;
     JsonManager g_jsonManager;
+    ResolvedOffsets g_offsets;
 
     std::unique_ptr<ResourceManager> g_resourceManager;
     std::unique_ptr<BuildingManager> g_buildingManager;
@@ -66,36 +67,49 @@ namespace
             return false;
         }
 
-        uintptr_t moduleBase = g_remoteMemory.GetModuleBase();
+        // Only after attaching: the resolver reads the game's memory and
+        // needs the module base, both of which are unavailable before this.
+        OffsetResolver resolver(g_remoteMemory);
+        g_offsets = resolver.Resolve();
 
-        g_resourceManager = std::make_unique<ResourceManager>(g_remoteMemory, moduleBase);
+        // Developer-only output: nothing is produced (or scanned for) unless
+        // a debugger such as Visual Studio is attached.
+        if (IsDebuggerPresent())
+        {
+            resolver.CollectDiagnostics();
+            OutputDebugStringW(resolver.DebugReport().c_str());
+        }
+
+        const std::wstring offsetProblems = resolver.ProblemSummary();
+        const std::wstring offsetAttention = resolver.AttentionSummary();
+
+        g_resourceManager = std::make_unique<ResourceManager>(g_remoteMemory, g_offsets.resourceTable);
         g_resourceManager->BuildResourceCache(); // one-time scan, feeds the "+" dialog's dropdown
 
-        g_buildingManager = std::make_unique<BuildingManager>(g_remoteMemory, *g_resourceManager, moduleBase);
+        g_buildingManager = std::make_unique<BuildingManager>(g_remoteMemory, *g_resourceManager, g_offsets);
         g_selectionTracker = std::make_unique<SelectionTracker>(g_remoteMemory);
 
         if (!g_buildingManager->ResolveBuildingTable())
         {
-            // The process handle and a few backend objects are already
-            // live at this point — rather than leaving the Connect button
-            // clickable (inviting a retry on top of that half-built
-            // state), force the button into "Disconnect" so clicking it
-            // is the only path forward. Disconnect() itself tears
-            // everything down cleanly, null-object guards make it safe to
-            // call even though g_interfaceManager was never created.
+            std::wstring failure = L"Attached, but could not resolve building table.";
+            if (!offsetProblems.empty())
+                failure += L"  [" + offsetProblems + L"]";
+            if (!offsetAttention.empty())
+                failure += L"  [" + offsetAttention + L"]";
+
             g_connected = true;
             UI::SetConnectButtonState(true);
-            UI::SetStatus(L"Attached, but could not resolve building table.");
+            UI::SetStatus(failure);
             return false;
         }
 
-        bool selectionHookInstalled = g_selectionTracker->Install();
+        bool selectionHookInstalled = g_selectionTracker->Install(g_offsets);
 
         g_cameraController = std::make_unique<CameraController>(g_remoteMemory);
-        bool cameraHookInstalled = g_cameraController->Install();
+        bool cameraHookInstalled = g_cameraController->Install(g_offsets);
 
         g_moneyController = std::make_unique<MoneyController>(g_remoteMemory);
-        bool moneyResolved = g_moneyController->Resolve();
+        bool moneyResolved = g_moneyController->Resolve(g_offsets);
 
         g_interfaceManager = std::make_unique<InterfaceManager>(
             *g_buildingManager, *g_resourceManager, g_jsonManager,
@@ -126,6 +140,8 @@ namespace
             status += L"  [camera hook failed: " + g_cameraController->GetLastError() + L"]";
         if (!moneyResolved)
             status += L"  [money signature not found]";
+        if (!offsetProblems.empty()) status += L"  [" + offsetProblems + L"]";
+        if (!offsetAttention.empty()) status += L"  [" + offsetAttention + L"]";
 
         UI::SetStatus(status);
 
@@ -190,8 +206,6 @@ namespace
 
             bool alwaysOnTop = g_jsonManager.GetAlwaysOnTop();
             UI::SetAlwaysOnTopChecked(alwaysOnTop);
-            if (alwaysOnTop)
-                SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
 
             // Both start disabled at launch — they're only meaningful once
             // connected, even though their checked state is already
@@ -510,7 +524,14 @@ int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, 
     ShowWindow(hwnd, nShowCmd);
     UpdateWindow(hwnd);
 
+    // Applied only once the window is visible: doing it inside WM_CREATE,
+    // before the first ShowWindow, is unreliable. JSON was already loaded
+    // in WM_CREATE, so this reads the saved value.
+    if (g_jsonManager.GetAlwaysOnTop())
+        SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+
     MSG msg{};
+
     while (GetMessageW(&msg, nullptr, 0, 0))
     {
         TranslateMessage(&msg);

@@ -379,7 +379,7 @@ namespace UI
             0, 0, 10, 10, parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_SET_MONEY_BUTTON)), instance, nullptr);
 
         g_moneyLockCheckbox = CreateWindowW(L"BUTTON", L"Lock (Click Set Money)", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
-            0, 0, 10, 10, parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_MONEY_LOCK_CHECKBOX)), instance, nullptr);
+            0, 0, 10, 10, parent, reinterpret_cast<HMENU>(static_cast<INT_PTR>(IDC_MONEY_LOCK_CHECKBOX)), instance, nullptr); 
 
         // --- Left column: all buildings ---
         g_typeFilterLabel = CreateWindowW(L"STATIC", L"Type filter:", WS_CHILD | WS_VISIBLE,
@@ -745,15 +745,25 @@ namespace UI
             }
 
             const BuildingListItem& item = *it->second;
-            wchar_t buffer[256];
 
-            ListView_GetItemText(g_buildingList, i, 0, buffer, 256);
-            if (item.displayName != buffer)
+            // Fresh, zeroed buffer for every read: ListView_GetItemText leaves
+            // the buffer untouched on failure, so a shared, uninitialized one
+            // would compare against garbage (or the previous column's text).
+            auto cellText = [&](int column) {
+                wchar_t text[256] = {};
+                ListView_GetItemText(g_buildingList, i, column, text, 256);
+                return std::wstring(text);
+                };
+
+            if (item.displayName != cellText(0))
                 ListView_SetItemText(g_buildingList, i, 0, const_cast<wchar_t*>(item.displayName.c_str()));
 
-            ListView_GetItemText(g_buildingList, i, 1, buffer, 256);
-            if (item.dictionaryName != buffer)
+            if (item.dictionaryName != cellText(1))
                 ListView_SetItemText(g_buildingList, i, 1, const_cast<wchar_t*>(item.dictionaryName.c_str()));
+
+            const wchar_t* activeText = item.active ? L"Yes" : L"No";
+            if (cellText(2) != activeText)
+                ListView_SetItemText(g_buildingList, i, 2, const_cast<wchar_t*>(activeText));
 
             stillPresent.insert(address);
         }

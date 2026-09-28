@@ -4,6 +4,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "../Offsets/OffsetResolver.h"
 
 class RemoteMemory;
 class DetourHook;
@@ -24,7 +25,7 @@ public:
     CameraController(const CameraController&) = delete;
     CameraController& operator=(const CameraController&) = delete;
 
-    bool Install();
+    bool Install(const ResolvedOffsets& offsets);
     void Uninstall();
 
     bool IsInstalled() const;

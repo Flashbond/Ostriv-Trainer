@@ -104,6 +104,7 @@
     <ClCompile Include="Ostriv Trainer\Game\SelectionTracker.cpp" />
     <ClCompile Include="Ostriv Trainer\Interface\InterfaceManager.cpp" />
     <ClCompile Include="Ostriv Trainer\Json\JsonManager.cpp" />
+    <ClCompile Include="Ostriv Trainer\Offsets\OffsetResolver.cpp" />
     <ClCompile Include="Ostriv Trainer\OstrivTrainer.cpp" />
     <ClCompile Include="Ostriv Trainer\UI\UI.cpp" />
   </ItemGroup>
@@ -116,13 +117,14 @@
     <ClInclude Include="Ostriv Trainer\Game\BuildingManager.h" />
     <ClInclude Include="Ostriv Trainer\Game\Inventory.h" />
     <ClInclude Include="Ostriv Trainer\Game\MoneyController.h" />
-    <ClInclude Include="Ostriv Trainer\Game\OstrivOffsets.h" />
+    <ClInclude Include="Ostriv Trainer\Offsets\OstrivOffsets.h" />
     <ClCompile Include="Ostriv Trainer\Game\Resource.h" />
     <ClInclude Include="Ostriv Trainer\Game\ResourceManager.h" />
     <ClInclude Include="Ostriv Trainer\Game\SelectionTracker.h" />
     <ClInclude Include="Ostriv Trainer\Interface\InterfaceTypes.h" />
     <ClInclude Include="Ostriv Trainer\Interface\InterfaceManager.h" />
     <ClInclude Include="Ostriv Trainer\Json\JsonManager.h" />
+    <ClInclude Include="Ostriv Trainer\Offsets\OffsetResolver.h" />
     <ClInclude Include="Ostriv Trainer\UI\UI.h" />
   </ItemGroup>
   <ItemGroup>

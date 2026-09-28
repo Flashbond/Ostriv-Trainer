@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include "../Offsets/OffsetResolver.h"
 
 class RemoteMemory;
 
@@ -13,7 +14,7 @@ public:
     explicit MoneyController(RemoteMemory& memory);
 
     // One-time offset check. Call once after attaching.
-    bool Resolve();
+    bool Resolve(const ResolvedOffsets& offsets);
 
     bool IsResolved() const;
 

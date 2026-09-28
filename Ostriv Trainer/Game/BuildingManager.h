@@ -7,6 +7,7 @@
 #include <unordered_map>
 
 #include "Building.h"
+#include "../Offsets/OffsetResolver.h"
 
 class RemoteMemory;
 class ResourceManager;
@@ -22,7 +23,7 @@ public:
         std::vector<Building*> newlyVisible;
     };
 
-    BuildingManager(RemoteMemory& memory, ResourceManager& resourceManager, uintptr_t moduleBase);
+    BuildingManager(RemoteMemory& memory, ResourceManager& resourceManager, const ResolvedOffsets& offsets);
 
     bool ResolveBuildingTable();
 
@@ -58,7 +59,7 @@ private:
     RemoteMemory& m_memory;
     ResourceManager& m_resourceManager;
 
-    uintptr_t m_moduleBase;
+    ResolvedOffsets m_offsets;
 
     uintptr_t m_buildingTable;
     int32_t m_buildingCount;

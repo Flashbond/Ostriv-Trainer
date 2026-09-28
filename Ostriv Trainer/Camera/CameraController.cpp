@@ -1,7 +1,7 @@
 #include "CameraController.h"
 #include "../Core/RemoteMemory.h"
 #include "../Core/DetourHook.h"
-#include "../Game/OstrivOffsets.h"
+#include "../Offsets/OstrivOffsets.h"
 
 namespace
 {
@@ -36,15 +36,22 @@ CameraController::~CameraController()
     Uninstall();
 }
 
-bool CameraController::Install()
+bool CameraController::Install(const ResolvedOffsets& offsets)
 {
     m_lastError.clear();
+
+    if (offsets.cameraHook == 0 || offsets.selectionHook == 0)
+    {
+        m_lastError = L"hook site not found";
+        return false;
+    }
 
     if (m_hook->IsInstalled())
     {
         m_lastError = L"already installed";
         return false;
     }
+
 
     uintptr_t moduleBase = m_memory.GetModuleBase();
     if (moduleBase == 0)
@@ -60,7 +67,9 @@ bool CameraController::Install()
         return false;
     }
 
-    uintptr_t hookAddress = moduleBase + Ostriv::CAMERA_UPDATE_RVA;
+    uintptr_t hookAddress = m_memory.FindPattern(Ostriv::CAMERA_HOOK_SIGNATURE);
+    if (!hookAddress)
+        hookAddress = moduleBase + Ostriv::CAMERA_UPDATE_RVA;
 
     std::vector<uint8_t> originalBytes(
         Ostriv::CAMERA_ORIGINAL_BYTES,

@@ -4,6 +4,7 @@
 #include <memory>
 #include <vector>
 #include <string>
+#include "../Offsets/OffsetResolver.h"
 
 class RemoteMemory;
 class DetourHook;
@@ -25,7 +26,7 @@ public:
     SelectionTracker(const SelectionTracker&) = delete;
     SelectionTracker& operator=(const SelectionTracker&) = delete;
 
-    bool Install();
+    bool Install(const ResolvedOffsets& offsets);
     void Uninstall();
 
     bool IsInstalled() const;
@@ -41,6 +42,7 @@ public:
 
 private:
     static std::vector<uint8_t> BuildCaveBody(uintptr_t sharedStateAddress);
+    int m_missedTicks = 0;
 
 private:
     RemoteMemory& m_memory;
