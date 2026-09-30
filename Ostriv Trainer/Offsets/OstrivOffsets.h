@@ -24,7 +24,7 @@ namespace Ostriv
     // instruction whose own bytes need pattern-matching.
     // Previous values for 0.5.9.60: state pointer via signature scan
     // "48 8B 05 ?? ?? ?? ?? F2 0F 10 80 F0 9C 13 00", MONEY_OFFSET=0x139CF0.
-    constexpr uintptr_t MONEY_STATE_POINTER_OFFSET = 0x67D6B0;
+    constexpr uintptr_t MONEY_STATE_POINTER_OFFSET = 0x675C40;
     constexpr uintptr_t MONEY_OFFSET = 0x139D18;
 
     // ============================================================
@@ -258,7 +258,7 @@ namespace Ostriv
     // before, only the module-relative location shifted. Previous value
     // for 0.5.9.60: 0x219680
     //for 0.5.9.61: 0x203FF0
-    constexpr uintptr_t SELECTION_HOOK_RVA = 0x203CA0;
+    constexpr uintptr_t SELECTION_HOOK_RVA = 0x203EA0;
 
     constexpr size_t SELECTION_HOOK_SIZE = 5;
 
