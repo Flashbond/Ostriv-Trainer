@@ -23,12 +23,14 @@ struct ResolvedOffsets
 
     uintptr_t cameraHook = 0;
     uintptr_t selectionHook = 0;
+
+    int32_t resourceTableCount = 0; // 0 = not resolved
 };
 
 class OffsetResolver
 {
 public:
-    enum class Source { None, Manual, Signature, Delta, Fallback, NarrowScan, FullScan };
+    enum class Source { None, Manual, Signature, Leftover, Delta, Fallback, NarrowScan, FullScan };
 
     struct Slots
     {
@@ -41,6 +43,7 @@ public:
         std::wstring name;
         Source source = Source::None;
         bool overrideRejected = false;
+        bool isScalar = false;
         Slots chosen;
         Slots lastKnown;
         const wchar_t* firstConstant = nullptr;   // OstrivOffsets.h constant holding chosen.first's RVA
@@ -90,6 +93,7 @@ private:
         const wchar_t* secondConstant = nullptr;
         Slots manual;
         Slots fromSignature;
+        Slots fromLeftover;   // hook sites only: a patch of ours left in the game by an earlier session
         Slots lastKnown;
         Validator isValid;
         Scanner scan;
@@ -108,15 +112,21 @@ private:
     std::vector<uintptr_t> FindAllBytes(const uint8_t* needle, size_t size) const;
     bool BodyTouchesInventory(uintptr_t function) const;
     bool ScanWritableData(size_t window, uintptr_t around, uintptr_t radius,
-        const std::function<bool(uintptr_t, const uint8_t*)>& visit) const;
+    const std::function<bool(uintptr_t, const uint8_t*)>& visit) const;
     std::vector<Candidate> CollectCountPointerPairs(const Validator& isValid, uintptr_t around, uintptr_t radius) const;
     Slots ScanCountPointerPairs(const Validator& isValid, uintptr_t around, uintptr_t radius);
     std::vector<uintptr_t> CollectResourceTables() const;
+    std::vector<uintptr_t> FindLeftoverHookSites(const uint8_t* original, size_t size) const;
 
     std::wstring FormatList(const std::wstring& title,
-        std::vector<std::pair<uintptr_t, std::wstring>> rows, uintptr_t chosenAddress) const;
+    std::vector<std::pair<uintptr_t, std::wstring>> rows, uintptr_t chosenAddress) const;
     void AddNote(const std::wstring& note);
     uintptr_t ScanResourceTable(uintptr_t around, uintptr_t radius) const;
+
+    // Wildcard byte-pattern search returning every match, not just the
+    // first — needed because several destructor-thunk calls in the game
+    // share this exact shape, and we disambiguate by address afterward.
+    std::vector<uintptr_t> FindAllPattern(const char* signature) const;
 
 private:
     RemoteMemory& m_memory;
@@ -126,6 +136,7 @@ private:
     mutable bool m_sectionsLoaded = false;
 
     mutable std::vector<Range> m_codeSections;
+    mutable uintptr_t m_imageSize = 0;
 
     std::vector<std::wstring> m_notes;      // informational, report only
     std::vector<std::wstring> m_warnings;   // report + status bar

@@ -83,7 +83,7 @@ namespace
         const std::wstring offsetProblems = resolver.ProblemSummary();
         const std::wstring offsetAttention = resolver.AttentionSummary();
 
-        g_resourceManager = std::make_unique<ResourceManager>(g_remoteMemory, g_offsets.resourceTable);
+        g_resourceManager = std::make_unique<ResourceManager>(g_remoteMemory, g_offsets.resourceTable, g_offsets.resourceTableCount);
         g_resourceManager->BuildResourceCache(); // one-time scan, feeds the "+" dialog's dropdown
 
         g_buildingManager = std::make_unique<BuildingManager>(g_remoteMemory, *g_resourceManager, g_offsets);

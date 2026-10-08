@@ -165,7 +165,7 @@ bool InterfaceManager::PollInventoryIfPending(uintptr_t address, std::vector<Res
 
     // `cache` holds whatever we last actually painted for this panel — if
     // nothing changed since then, skip the repaint entirely.
-    if (InventoryContentsEqual(fresh, cache))
+    if (InventoryContentsEqual(fresh, cache, GetLockedResourceIds(address)))
         return false;
 
     cache = std::move(fresh);
@@ -251,6 +251,12 @@ bool InterfaceManager::SetSelectedResourceAmount(int32_t resourceId, float desir
     if (!building)
         return false;
 
+    // A target of zero means "remove it" — there is nothing left to keep
+    // up, so no lock is stored for it, and an existing one is dropped by
+    // the unlock branch below. 0.01 because the amount box shows 2 decimals.
+    const bool removing = desiredAmount < 0.01f;
+    locked = locked && !removing;
+
     const std::wstring& uniqueId = building->GetUniqueId();
 
     if (locked)
@@ -268,6 +274,9 @@ bool InterfaceManager::SetSelectedResourceAmount(int32_t resourceId, float desir
 
     if (!ApplyAmountToBuilding(*building, resourceId, desiredAmount))
         return false;
+
+    if (removing)
+        UI::ClearSelectedPendingChecks(); // Current için: UI::ClearCurrentPendingChecks();
 
     BuildSelectedInventory();
     UI::PopulateSelectedInventory(m_selectedInventory, GetLockedResourceIds(m_selectedBuildingAddress));
@@ -364,6 +373,12 @@ bool InterfaceManager::SetCurrentResourceAmount(int32_t resourceId, float desire
     if (!building)
         return false;
 
+    // A target of zero means "remove it" — there is nothing left to keep
+    // up, so no lock is stored for it, and an existing one is dropped by
+    // the unlock branch below. 0.01 because the amount box shows 2 decimals.
+    const bool removing = desiredAmount < 0.01f;
+    locked = locked && !removing;
+
     const std::wstring& uniqueId = building->GetUniqueId();
 
     if (locked)
@@ -381,6 +396,9 @@ bool InterfaceManager::SetCurrentResourceAmount(int32_t resourceId, float desire
 
     if (!ApplyAmountToBuilding(*building, resourceId, desiredAmount))
         return false;
+
+    if (removing)
+        UI::ClearSelectedPendingChecks(); // Current için: UI::ClearCurrentPendingChecks();
 
     BuildCurrentInventory();
     UI::PopulateCurrentInventory(m_currentInventory, GetLockedResourceIds(m_currentBuildingAddress));
@@ -757,6 +775,8 @@ bool InterfaceManager::RemoveSelectedResource(int32_t resourceId)
     if (!uniqueId.empty() && m_jsonManager.ClearResourceLock(uniqueId, resourceId))
         m_jsonManager.Save();
 
+    UI::ClearSelectedPendingChecks(); // Current için: UI::ClearCurrentPendingChecks();
+
     building->RefreshInventory();
     BuildSelectedInventory();
     UI::PopulateSelectedInventory(m_selectedInventory, GetLockedResourceIds(m_selectedBuildingAddress));
@@ -797,20 +817,34 @@ bool InterfaceManager::RemoveCurrentResource(int32_t resourceId)
     if (!uniqueId.empty() && m_jsonManager.ClearResourceLock(uniqueId, resourceId))
         m_jsonManager.Save();
 
+    UI::ClearSelectedPendingChecks(); // Current için: UI::ClearCurrentPendingChecks();
+
     building->RefreshInventory();
     BuildCurrentInventory();
     UI::PopulateCurrentInventory(m_currentInventory, GetLockedResourceIds(m_currentBuildingAddress));
     return true;
 }
 
-bool InterfaceManager::InventoryContentsEqual(const std::vector<ResourceListItem>& a, const std::vector<ResourceListItem>& b) const
+bool InterfaceManager::InventoryContentsEqual(const std::vector<ResourceListItem>& a,
+    const std::vector<ResourceListItem>& b,
+    const std::unordered_set<int32_t>& ignoreAmountFor) const
 {
     if (a.size() != b.size())
         return false;
 
     for (size_t i = 0; i < a.size(); ++i)
     {
-        if (a[i].id != b[i].id || a[i].amount != b[i].amount)
+        if (a[i].id != b[i].id)
+            return false;
+
+        // Locked ("Keep up") rows: enforcement rewrites them every fast
+        // tick and the game nudges them in between, so their amounts
+        // jitter constantly while being held at the target. Only their
+        // presence matters here.
+        if (ignoreAmountFor.count(a[i].id))
+            continue;
+
+        if (a[i].amount != b[i].amount)
             return false;
     }
 

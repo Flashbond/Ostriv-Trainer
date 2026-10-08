@@ -40,7 +40,7 @@ bool CameraController::Install(const ResolvedOffsets& offsets)
 {
     m_lastError.clear();
 
-    if (offsets.cameraHook == 0 || offsets.selectionHook == 0)
+    if (offsets.cameraHook == 0)
     {
         m_lastError = L"hook site not found";
         return false;
@@ -67,9 +67,7 @@ bool CameraController::Install(const ResolvedOffsets& offsets)
         return false;
     }
 
-    uintptr_t hookAddress = m_memory.FindPattern(Ostriv::CAMERA_HOOK_SIGNATURE);
-    if (!hookAddress)
-        hookAddress = moduleBase + Ostriv::CAMERA_UPDATE_RVA;
+    uintptr_t hookAddress = offsets.cameraHook;
 
     std::vector<uint8_t> originalBytes(
         Ostriv::CAMERA_ORIGINAL_BYTES,

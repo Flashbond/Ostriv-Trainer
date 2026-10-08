@@ -36,7 +36,7 @@ namespace Ostriv
     // memory every slow tick; nothing here is guessed.
     // ============================================================
 
-    constexpr uintptr_t INGAME_BUILDINGS_TABLE_OFFSET = 0x686048;
+    constexpr uintptr_t INGAME_BUILDINGS_TABLE_OFFSET = 0x67E590;
 
     constexpr uintptr_t INGAME_BUILDINGS_TABLE_COUNT_OFFSET = 0x00;
     constexpr uintptr_t INGAME_BUILDINGS_TABLE_ARRAY_OFFSET = 0x08;
@@ -142,8 +142,8 @@ namespace Ostriv
     // same exact pointer/count layout and 0xA8 entry size as before,
     // only the module-relative location shifted. Previous values for
     // 0.5.9.60: pointer=0x6A3B78, count=0x6A3B70.
-    constexpr uintptr_t BUILDING_DICTIONARY_TABLE_POINTER_OFFSET = 0x67DDB8;
-    constexpr uintptr_t BUILDING_DICTIONARY_TABLE_COUNT_OFFSET = 0x67DDB0;
+    constexpr uintptr_t BUILDING_DICTIONARY_TABLE_POINTER_OFFSET = 0x676348;
+    constexpr uintptr_t BUILDING_DICTIONARY_TABLE_COUNT_OFFSET = 0x676340;
 
     // Sanity ceiling on the count read above — not a real capacity limit,
     // just a guard against a corrupted/misread value.
@@ -166,10 +166,22 @@ namespace Ostriv
     // FUN_14021be70 (the function that defines every resource) and by the
     // exit-time destructor thunk. NOT 0x688A00: that is the capacity field
     // of a static vector inside FUN_140203ca0.
-    // Previous: 0x68A840 (0.5.9.61), 0x6AE850 (0.5.9.60).
-    constexpr uintptr_t RESOURCE_TABLE_OFFSET = 0x688A10;
+    // Previous: 0x688A10 (0.5.9.62), 0x68A840 (0.5.9.61), 0x6AE850 (0.5.9.60).
+    constexpr uintptr_t RESOURCE_TABLE_OFFSET = 0x680F60;
 
     constexpr size_t RESOURCE_ENTRY_SIZE = 0x10;
+
+    // Compiler-emitted literal count (and entry size) passed to the thunk
+// that destructs the resource table at exit. Reading it directly means
+// a future update that adds resources is picked up without a new
+// trainer release. Both RIP-relative displacements (the destructor
+// thunk's own address, and the table's address) are wildcarded; the
+// entry size (0x10) is kept as a literal since it's part of what makes
+// this exact call recognizable.
+    constexpr char RESOURCE_TABLE_COUNT_SIGNATURE[] =
+        "4C 8D 0D ?? ?? ?? ?? BA 10 00 00 00 41 B8 ?? ?? ?? ?? 48 8D 0D ?? ?? ?? ?? E9 ?? ?? ?? ??";
+    constexpr size_t RESOURCE_TABLE_COUNT_SIG_IMM_OFFSET = 14;
+    constexpr int32_t RESOURCE_TABLE_COUNT_SANITY_MAX = 4096;
 
     // Confirmed via decompilation, not guessed: a compiler-generated
     // `eh_vector_destructor_iterator(&DAT_1406ae850, 0x10, 0xbc, ...)`
@@ -228,7 +240,7 @@ namespace Ostriv
     // JMP patch here (the bytes no longer match, but DetourHook can still
     // recognize and undo its own leftover patch at a known address).
     // Doesn't need updating every game patch. Last set for 0.5.9.62.
-    constexpr uintptr_t CAMERA_UPDATE_RVA = 0x2B00B2;
+    constexpr uintptr_t CAMERA_UPDATE_RVA = 0x2B0022;
 
     constexpr SIZE_T CAMERA_HOOK_SIZE = 9;
 

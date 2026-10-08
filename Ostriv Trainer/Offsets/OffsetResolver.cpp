@@ -110,6 +110,7 @@ namespace
         return plausible >= (Ostriv::RESOURCE_TABLE_COUNT * 3) / 4;
     }
 
+
     // Weak on purpose: there is no independent way to prove this is the
     // money field without knowing the player's balance. Compare the money
     // label in the UI against the game whenever the report says anything
@@ -184,6 +185,8 @@ void OffsetResolver::LoadSections() const
     IMAGE_NT_HEADERS64 nt{};
     if (!m_memory.Read(base + dos.e_lfanew, nt) || nt.Signature != IMAGE_NT_SIGNATURE)
         return;
+
+    m_imageSize = nt.OptionalHeader.SizeOfImage;
 
     const uintptr_t sectionTable = base + dos.e_lfanew +
         offsetof(IMAGE_NT_HEADERS64, OptionalHeader) + nt.FileHeader.SizeOfOptionalHeader;
@@ -498,6 +501,15 @@ OffsetResolver::Slots OffsetResolver::Choose(const Item& item)
         source = Source::Signature;
     }
 
+    // 2b. A hook patch of ours left in the game by a session that ended
+    //     without Disconnect. Both ends of the patch were verified when it
+    //     was found, which makes it more trustworthy than any last-known value.
+    if (source == Source::None && item.fromLeftover.first && item.isValid(item.fromLeftover))
+    {
+        chosen = item.fromLeftover;
+        source = Source::Leftover;
+    }
+
     // 3. Last-known value shifted by whatever an earlier item already proved.
     if (source == Source::None && item.useDelta && m_hasDelta && m_delta != 0)
     {
@@ -657,6 +669,46 @@ ResolvedOffsets OffsetResolver::Resolve()
         result.resourceTable = Choose(item).first;
     }
 
+    // Resource table element count. The destructor-call shape alone is
+    // ambiguous (several unrelated tables share entry size 0x10), so every
+    // match's RIP target is compared against the table address we already
+    // resolved above — only the one that actually points at our table
+    // counts, and we read the literal count right there.
+    {
+        int32_t discovered = Ostriv::RESOURCE_TABLE_COUNT;
+        Source source = Source::Fallback;
+
+        if (result.resourceTable)
+        {
+            for (uintptr_t match : FindAllPattern(Ostriv::RESOURCE_TABLE_COUNT_SIGNATURE))
+            {
+                uintptr_t target = RipTarget(match + 18); // the RCX LEA inside this call shape
+                if (target != result.resourceTable)
+                    continue;
+
+                int32_t value = 0;
+                if (m_memory.Read(match + Ostriv::RESOURCE_TABLE_COUNT_SIG_IMM_OFFSET, value) &&
+                    value > 0 && value <= Ostriv::RESOURCE_TABLE_COUNT_SANITY_MAX)
+                {
+                    discovered = value;
+                    source = Source::Signature;
+                }
+                break; // the table address is unique, so this is the only real candidate
+            }
+        }
+
+        result.resourceTableCount = discovered;
+
+        Entry entry;
+        entry.name = L"resource table count";
+        entry.source = source;
+        entry.isScalar = true;
+        entry.chosen = Slots{ static_cast<uintptr_t>(discovered), 0 };
+        entry.lastKnown = Slots{ static_cast<uintptr_t>(Ostriv::RESOURCE_TABLE_COUNT), 0 };
+        entry.firstConstant = L"RESOURCE_TABLE_COUNT";
+        m_entries.push_back(entry);
+    }
+
     // 4. Money state pointer slot. No scan: nothing to validate a hit against.
     {
         Item item;
@@ -688,6 +740,17 @@ ResolvedOffsets OffsetResolver::Resolve()
         item.isValid = [this](const Slots& s) {
             return HookSiteLooksRight(m_memory, s.first, Ostriv::CAMERA_ORIGINAL_BYTES, Ostriv::CAMERA_HOOK_SIZE);
             };
+
+        // A patch of ours may still sit in the game from a session that
+        // ended without Disconnect. The signature cannot see it (its bytes
+        // are overwritten) and the header address may be stale, so find it
+        // from the trampoline instead.
+        const std::vector<uintptr_t> leftovers =
+            FindLeftoverHookSites(Ostriv::CAMERA_ORIGINAL_BYTES, Ostriv::CAMERA_HOOK_SIZE);
+        if (leftovers.size() == 1)
+            item.fromLeftover.first = leftovers.front();
+        else if (leftovers.size() > 1)
+            m_warnings.push_back(L"camera hook: several leftover patches found, none used");
 
         result.cameraHook = Choose(item).first;
     }
@@ -728,6 +791,13 @@ ResolvedOffsets OffsetResolver::Resolve()
             return HookSiteLooksRight(m_memory, s.first, Ostriv::SELECTION_HOOK_ORIGINAL_BYTES, Ostriv::SELECTION_HOOK_SIZE);
             };
 
+        const std::vector<uintptr_t> leftovers =
+            FindLeftoverHookSites(Ostriv::SELECTION_HOOK_ORIGINAL_BYTES, Ostriv::SELECTION_HOOK_SIZE);
+        if (leftovers.size() == 1)
+            item.fromLeftover.first = leftovers.front();
+        else if (leftovers.size() > 1)
+            m_warnings.push_back(L"selection hook: several leftover patches found, none used");
+
         result.selectionHook = Choose(item).first;
 
         m_details.push_back(FormatList(L"selection hook, sites sharing the opening bytes", rows, result.selectionHook));
@@ -757,11 +827,12 @@ std::wstring OffsetResolver::AttentionSummary() const
         list += name;
         };
 
-    std::wstring moved, manual, rejected;
+    std::wstring moved, manual, rejected, recovered;
     for (const auto& entry : m_entries)
     {
         if (entry.overrideRejected) append(rejected, entry.name);
         if (entry.source == Source::Manual) append(manual, entry.name);
+        if (entry.source == Source::Leftover) append(recovered, entry.name);
         if (entry.source == Source::Delta || entry.source == Source::NarrowScan || entry.source == Source::FullScan)
             append(moved, entry.name);
     }
@@ -775,11 +846,150 @@ std::wstring OffsetResolver::AttentionSummary() const
     if (!moved.empty()) addPart(L"offsets moved, verify: " + moved);
     if (!manual.empty()) addPart(L"manual override in use: " + manual);
     if (!rejected.empty()) addPart(L"override rejected: " + rejected);
+    if (!recovered.empty()) addPart(L"recovered a hook patch left by a previous session: " + recovered);
 
     for (const auto& warning : m_warnings)
         addPart(warning);
 
     return text;
+}
+
+std::vector<uintptr_t> OffsetResolver::FindLeftoverHookSites(const uint8_t* original, size_t size) const
+{
+    std::vector<uintptr_t> sites;
+
+    LoadSections(); // also learns the image size
+    const uintptr_t imageBegin = m_memory.GetModuleBase();
+    const uintptr_t imageEnd = imageBegin + m_imageSize;
+    if (m_imageSize == 0 || size < 5)
+        return sites;
+
+    auto isExecutable = [](DWORD protect) {
+        if (protect & (PAGE_GUARD | PAGE_NOACCESS))
+            return false;
+        return (protect & (PAGE_EXECUTE | PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE | PAGE_EXECUTE_WRITECOPY)) != 0;
+        };
+
+    constexpr SIZE_T kMaxRegion = 0x1000000; // our caves are tiny; skip anything big
+    uintptr_t address = 0x10000;
+
+    MEMORY_BASIC_INFORMATION info{};
+    while (address < Ostriv::MAX_VALID_POINTER &&
+        VirtualQueryEx(m_memory.GetProcessHandle(), reinterpret_cast<LPCVOID>(address), &info, sizeof(info)) == sizeof(info))
+    {
+        const uintptr_t regionBegin = reinterpret_cast<uintptr_t>(info.BaseAddress);
+        address = regionBegin + info.RegionSize; // always advance, whatever the checks below decide
+
+        if (info.State != MEM_COMMIT || info.Type != MEM_PRIVATE ||
+            !isExecutable(info.Protect) || info.RegionSize > kMaxRegion)
+            continue;
+
+        std::vector<uint8_t> buffer(info.RegionSize);
+        if (!m_memory.ReadBytes(regionBegin, buffer.data(), buffer.size()))
+            continue;
+
+        for (size_t i = 0; i + size + 5 <= buffer.size(); ++i)
+        {
+            // Trampoline tail: [original bytes][E9 rel32 back to hookSite + size]
+            if (buffer[i + size] != 0xE9 || std::memcmp(buffer.data() + i, original, size) != 0)
+                continue;
+
+            int32_t trampolineRel = 0;
+            std::memcpy(&trampolineRel, buffer.data() + i + size + 1, sizeof(trampolineRel));
+
+            const uintptr_t jumpBackFrom = regionBegin + i + size;
+            const uintptr_t returnTarget =
+                jumpBackFrom + 5 + static_cast<uintptr_t>(static_cast<intptr_t>(trampolineRel));
+
+            if (returnTarget < imageBegin + size || returnTarget >= imageEnd)
+                continue;
+
+            const uintptr_t hookSite = returnTarget - size;
+
+            // Second link: the hook site must hold our JMP (E9, NOP padding
+            // after it) and that JMP must land in this very region.
+            std::vector<uint8_t> patched(size);
+            if (!m_memory.ReadBytes(hookSite, patched.data(), size) || patched[0] != 0xE9)
+                continue;
+
+            bool padded = true;
+            for (size_t b = 5; b < size; ++b)
+                padded = padded && patched[b] == 0x90;
+            if (!padded)
+                continue;
+
+            int32_t hookRel = 0;
+            std::memcpy(&hookRel, patched.data() + 1, sizeof(hookRel));
+            const uintptr_t jumpTarget =
+                hookSite + 5 + static_cast<uintptr_t>(static_cast<intptr_t>(hookRel));
+
+            // The cave body comes first, so the target is at or before the
+            // copy of the original bytes.
+            if (jumpTarget < regionBegin || jumpTarget > regionBegin + i)
+                continue;
+
+            sites.push_back(hookSite);
+        }
+    }
+
+    std::sort(sites.begin(), sites.end());
+    sites.erase(std::unique(sites.begin(), sites.end()), sites.end());
+    return sites;
+}
+
+std::vector<uintptr_t> OffsetResolver::FindAllPattern(const char* signature) const
+{
+    std::vector<int> bytes; // -1 = wildcard
+    std::string s(signature);
+    for (size_t i = 0; i < s.size(); )
+    {
+        while (i < s.size() && s[i] == ' ') ++i;
+        if (i >= s.size()) break;
+        if (s[i] == '?')
+        {
+            bytes.push_back(-1);
+            while (i < s.size() && s[i] == '?') ++i;
+        }
+        else
+        {
+            bytes.push_back(static_cast<int>(std::strtol(s.c_str() + i, nullptr, 16)));
+            i += 2;
+        }
+    }
+
+    std::vector<uintptr_t> hits;
+    const size_t size = bytes.size();
+    if (size == 0)
+        return hits;
+
+    constexpr size_t kChunk = 0x10000;
+    std::vector<uint8_t> buffer(kChunk + size);
+
+    for (const Range& range : CodeSections())
+    {
+        for (uintptr_t start = range.begin; start < range.end; start += kChunk)
+        {
+            const size_t want = (std::min)(static_cast<size_t>(range.end - start), kChunk + size);
+            if (want < size || !m_memory.ReadBytes(start, buffer.data(), want))
+                continue;
+
+            for (size_t i = 0; i + size <= want && i < kChunk; ++i)
+            {
+                bool match = true;
+                for (size_t b = 0; b < size; ++b)
+                {
+                    if (bytes[b] != -1 && buffer[i + b] != static_cast<uint8_t>(bytes[b]))
+                    {
+                        match = false;
+                        break;
+                    }
+                }
+                if (match)
+                    hits.push_back(start + i);
+            }
+        }
+    }
+    return hits;
 }
 
 std::wstring OffsetResolver::DebugReport() const
@@ -790,17 +1000,22 @@ std::wstring OffsetResolver::DebugReport() const
     for (const auto& entry : m_entries)
     {
         const wchar_t* how =
+            entry.source == Source::Leftover ? L"LEFTOVER" :
             entry.source == Source::Manual ? L"MANUAL" :
             entry.source == Source::Signature ? L"signature" :
             entry.source == Source::Delta ? L"delta" :
             entry.source == Source::Fallback ? L"fallback" :
             entry.source == Source::NarrowScan ? L"SCAN (near)" :
             entry.source == Source::FullScan ? L"SCAN (full)" : L"NOT FOUND";
+            
 
         const wchar_t* note = entry.overrideRejected ? L"  (override rejected)" : L"";
 
         wchar_t line[224];
-        if (entry.chosen.first)
+        if (entry.isScalar && entry.chosen.first)
+            swprintf_s(line, L"%-20s %-12s value %llu%s\n", entry.name.c_str(), how,
+                static_cast<unsigned long long>(entry.chosen.first), note);
+        else if (entry.chosen.first)
             swprintf_s(line, L"%-20s %-12s RVA 0x%llX%s\n", entry.name.c_str(), how,
                 static_cast<unsigned long long>(entry.chosen.first - base), note);
         else
@@ -827,6 +1042,18 @@ std::wstring OffsetResolver::DebugReport() const
     for (const auto& entry : m_entries)
     {
         if (entry.source == Source::None) continue;
+
+        if (entry.isScalar)
+        {
+            if (entry.firstConstant && entry.chosen.first && entry.chosen.first != entry.lastKnown.first)
+            {
+                wchar_t line[160];
+                swprintf_s(line, L"constexpr int32_t %s = %llu;\n", entry.firstConstant,
+                    static_cast<unsigned long long>(entry.chosen.first));
+                suggestions += line;
+            }
+            continue;
+        }
 
         auto emit = [&](const wchar_t* constant, uintptr_t address, uintptr_t known) {
             if (!constant || !address || address == known) return;

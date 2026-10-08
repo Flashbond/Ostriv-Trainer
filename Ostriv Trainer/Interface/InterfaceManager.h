@@ -89,7 +89,9 @@ private:
     void BuildCurrentInventory();
 
     bool PollInventoryIfPending(uintptr_t address, std::vector<ResourceListItem>& output);
-    bool InventoryContentsEqual(const std::vector<ResourceListItem>& a, const std::vector<ResourceListItem>& b) const;
+    bool InventoryContentsEqual(const std::vector<ResourceListItem>& a,
+        const std::vector<ResourceListItem>& b,
+        const std::unordered_set<int32_t>& ignoreAmountFor) const;
 
     bool BuildBuildingItem(const Building& building, BuildingListItem& output) const;
     void BuildInventoryItems(const Building& building, std::vector<ResourceListItem>& output) const;

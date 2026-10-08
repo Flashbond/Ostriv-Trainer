@@ -31,7 +31,7 @@ bool SelectionTracker::Install(const ResolvedOffsets& offsets)
 {
     m_lastError.clear();
 
-    if (offsets.cameraHook == 0 || offsets.selectionHook == 0)
+    if (offsets.selectionHook == 0)
     {
         m_lastError = L"hook site not found";
         return false;
@@ -57,7 +57,7 @@ bool SelectionTracker::Install(const ResolvedOffsets& offsets)
         return false;
     }
 
-    uintptr_t hookAddress = moduleBase + Ostriv::SELECTION_HOOK_RVA;
+    uintptr_t hookAddress = offsets.selectionHook;
 
     std::vector<uint8_t> originalBytes(
         Ostriv::SELECTION_HOOK_ORIGINAL_BYTES,

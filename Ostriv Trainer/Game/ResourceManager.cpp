@@ -55,15 +55,23 @@ static bool IsExcludedResourceName(const std::wstring& name)
     return false;
 }
 
-ResourceManager::ResourceManager(RemoteMemory& memory, uintptr_t tableAddress)
-    : m_memory(memory),m_tableAddress(tableAddress) {
+ResourceManager::ResourceManager(RemoteMemory& memory, uintptr_t tableAddress, int32_t tableCount)
+    : m_memory(memory), m_tableAddress(tableAddress), m_tableCount(tableCount) {
 }
 
 bool ResourceManager::GetResourceName(int32_t resourceId, std::wstring& name) const {
+
     if (!m_tableAddress) return false;
+
+    if (!m_tableAddress || resourceId < 0 || resourceId >= m_tableCount)
+        return false;
+
     name.clear();
 
     if (resourceId < 0 || resourceId > 5000) return false;
+
+    if (!m_tableAddress)
+        return false;
 
     uintptr_t entryAddress = m_tableAddress + static_cast<uintptr_t>(resourceId) * Ostriv::RESOURCE_ENTRY_SIZE;
 
@@ -85,7 +93,7 @@ void ResourceManager::BuildResourceCache()
 
     m_knownResources.clear();
 
-    for (int32_t id = 1; id < Ostriv::RESOURCE_TABLE_COUNT; ++id)
+    for (int32_t id = 1; id < m_tableCount - 1; ++id)
     {
         std::wstring name;
         if (GetResourceName(id, name) && IsPlausibleResourceName(name) && !IsExcludedResourceName(name))
